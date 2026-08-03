@@ -33,6 +33,7 @@
 - 桌面启动按钮必须先看健康检查，`/ping` 已正常时应复用既有后端；否则用户从外部启动过 WSL 后端时，桌面壳会误以为“进程未运行”并尝试启动第二个实例。
 - Windows GUI 程序如果直接打开出现黑框，检查 PE subsystem；Rust/Tauri 入口可用 `#![cfg_attr(windows, windows_subsystem = "windows")]` 隐藏 console。
 - Windows 上如果 `npm.ps1` 指向 `C:\Users\<用户>\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js` 且目标不存在，不要继续用坏 shim；可直接调用 Node 安装目录自带的 `node_modules\npm\bin\npm-cli.js`，并用项目内 cache 避免用户级 npm cache 权限问题。
+- `usbipd attach --wsl` 不能假设 WSL2 会自动启动；在 `usbipd-win 5.3.0` 下应先启动并保活目标 WSL2 发行版，否则会报 `There is no WSL 2 distribution running`。
 
 ## 2026-08-03 Git 提交规范
 

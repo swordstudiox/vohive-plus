@@ -5,6 +5,9 @@ export const runtimeService = {
   detect() {
     return invoke<RuntimeStatus>('detect')
   },
+  startWsl() {
+    return invoke<ActionResult>('start_wsl')
+  },
   attachUsb() {
     return invoke<ActionResult>('attach_usb')
   },

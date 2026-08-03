@@ -251,6 +251,23 @@
 - [x] 收敛 `DeviceConfigDTO.roaming_enabled` 误导性契约。
 - [x] 清理“四开关”相关注释和 Tauri schema 生成文件策略。
 
+### 阶段 4H：WSL 启动与 USB attach 前置保活
+
+### 根因
+
+- [x] `usbipd attach --wsl --busid <BUSID>` 在当前 `usbipd-win 5.3.0` 下要求至少有一个 WSL2 发行版处于 Running。
+- [x] 当前桌面壳“连接 USB 到 WSL”只执行 `bind/attach`，没有先启动或保活目标 WSL2 发行版。
+- [x] 当前界面没有显式“启动 WSL”按钮，用户无法在连接 USB 前主动拉起 WSL。
+
+### 修复计划
+
+- [x] Rust 侧补测试：需要 attach 的 USB 状态必须先保活 WSL；WSL keepalive 命令固定使用目标发行版 `Ubuntu-24.04`。
+- [x] 前端补测试：runtime service 暴露 `start_wsl`，界面展示“启动 WSL”按钮。
+- [x] 桌面壳新增 `start_wsl` 命令，启动隐藏 keepalive WSL 进程并等待目标发行版 Running。
+- [x] `attach_usb` 在执行 `usbipd attach` 前自动调用 WSL 保活，避免用户必须手工开 WSL 终端。
+- [x] UI 在运行环境卡片提供“启动 WSL”按钮，并复用现有提示/状态刷新链路。
+- [x] 重新验证、重编译桌面 debug exe 和安装包，并提交本地 git。
+
 ### 阶段 4 验证标准
 
 - [ ] 从 Windows 双击桌面程序后，可以一键启动 WSL2 内的 VoHive。
@@ -318,4 +335,5 @@
 - 2026-08-03 阶段 4 缺陷修复：修复 Tauri debug resource path 的 Windows verbatim 前缀 `\\?\F:\...` 转 WSL 路径错误，避免部署时报 `cp: cannot stat '//?/F:/...'`；启动按钮在 `/ping` 已正常时改为幂等复用既有 WSL 后端；停止按钮改为先停止 WSL 内 `/opt/vohive/bin/vohive` 进程并避免阻塞等待 Windows `wsl.exe` 子进程；debug exe 已设置 Windows GUI 子系统，打开不再显示黑色控制台框。
 - 2026-08-03 阶段 4G 代码审查修复：用户确认默认 `admin/admin` 和默认监听所有地址本轮以及以后都不修；其余审查问题已修复，包括卡策略竞态、漫游 live API 状态一致性、APN 清空、prepare-usb 业务失败识别、策略开关错误展示、桌面壳命令超时、USB attach 幂等、资源缺失校验和 DTO 契约收敛。提交前验证：`git diff --check` 仅 CRLF 提示；`go test ./internal/api ./internal/db ./internal/device -count=1`、`node --test tests/*.test.ts`、`node node_modules/vue-tsc/bin/vue-tsc.js --noEmit`、`node node_modules/vite/bin/vite.js build`、`cargo test`、`pnpm run build` 均通过。
 - 2026-08-03 产物重编译：已重新执行 Web build 并同步到 `internal/web/dist`；已在 WSL2 中重新编译 Linux amd64 后端二进制 `dist/vohive-open_linux_amd64`，并覆盖桌面壳内置资源 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`；已执行 `pnpm tauri build --debug` 重新生成 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe` 和 NSIS debug 安装包。
+- 2026-08-03 阶段 4H 修复：截图中的 `usbipd: error: There is no WSL 2 distribution running` 根因已修复；桌面壳新增“启动 WSL”按钮，`attach_usb` 在执行 `usbipd attach --wsl` 前会自动启动并保活 `Ubuntu-24.04`，不再要求用户手动打开 WSL 终端。验证：新增 RED 测试后确认失败；实现后 `cargo test` 13 项通过、`node --test tests/*.test.mjs` 2 项通过、`pnpm run build` 通过、`pnpm tauri build --debug` 通过。
 - 待实施后补充：VirtualBox 路线实际体积、启动耗时、USB 稳定性。

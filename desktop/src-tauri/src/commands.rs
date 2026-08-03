@@ -23,6 +23,24 @@ pub fn status(state: State<'_, AppState>) -> RuntimeStatus {
 }
 
 #[tauri::command]
+pub fn start_wsl(state: State<'_, AppState>) -> ActionResult {
+    match ensure_wsl_running(&state) {
+        Ok(pid) => action(
+            true,
+            format!("WSL 已启动并保活 pid={pid}"),
+            Some(build_status(&state)),
+            None,
+        ),
+        Err(err) => action(
+            false,
+            format!("启动 WSL 失败: {err}"),
+            Some(build_status(&state)),
+            Some(suggested_wsl_keepalive_command()),
+        ),
+    }
+}
+
+#[tauri::command]
 pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
     let usbipd_status = usbipd::detect_usbipd();
     let Some(path) = usbipd_status.path.clone() else {
@@ -33,7 +51,8 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
         return action(false, "未发现 2ca3:4006 Baiwang", None, None);
     };
 
-    match usb_attach_step(target) {
+    let step = usb_attach_step(target);
+    match step {
         UsbAttachStep::AlreadyAttached => {
             return action(true, "USB 已连接到 WSL", Some(build_status(&state)), None);
         }
@@ -60,6 +79,17 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
             }
         }
         UsbAttachStep::AttachOnly => {}
+    }
+
+    if step.requires_running_wsl() {
+        if let Err(err) = ensure_wsl_running(&state) {
+            return action(
+                false,
+                format!("连接 USB 前启动 WSL 失败: {err}"),
+                Some(build_status(&state)),
+                Some(suggested_wsl_keepalive_command()),
+            );
+        }
     }
 
     let attach = run_output(&path, &["attach", "--wsl", "--busid", &target.busid]);
@@ -290,6 +320,12 @@ fn usb_attach_step(target: &UsbDevice) -> UsbAttachStep {
     }
 }
 
+impl UsbAttachStep {
+    fn requires_running_wsl(self) -> bool {
+        !matches!(self, UsbAttachStep::AlreadyAttached)
+    }
+}
+
 fn validate_vohive_resources(bin: &Path, cfg: &Path, script: &Path) -> Result<(), String> {
     let missing = [
         ("vohive-open_linux_amd64", bin),
@@ -305,6 +341,62 @@ fn validate_vohive_resources(bin: &Path, cfg: &Path, script: &Path) -> Result<()
     } else {
         Err(format!("桌面壳资源不完整，缺少: {}", missing.join(", ")))
     }
+}
+
+fn ensure_wsl_running(state: &State<'_, AppState>) -> Result<u32, String> {
+    let mut guard = state.wsl_keepalive.lock().expect("wsl mutex poisoned");
+    if let Some(child) = guard.as_mut() {
+        match child.try_wait() {
+            Ok(None) => return Ok(child.id()),
+            Ok(Some(status)) => {
+                state.logs.push(format!("WSL 保活进程已退出: {status}"));
+                *guard = None;
+            }
+            Err(err) => {
+                state.logs.push(format!("读取 WSL 保活进程状态失败: {err}"));
+                *guard = None;
+            }
+        }
+    }
+
+    let mut cmd = hidden_command(wsl::executable());
+    cmd.args(wsl::keepalive_args());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let child = cmd
+        .spawn()
+        .map_err(|err| format!("启动 {distro} 失败: {err}", distro = wsl::DISTRO))?;
+    let pid = child.id();
+    *guard = Some(child);
+    drop(guard);
+
+    if let Err(err) = wsl::wait_until_distro_running(Duration::from_secs(8)) {
+        let mut guard = state.wsl_keepalive.lock().expect("wsl mutex poisoned");
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.try_wait();
+        }
+        return Err(err);
+    }
+
+    state.logs.push(format!("已启动 WSL 保活进程 pid={pid}"));
+    Ok(pid)
+}
+
+fn suggested_wsl_keepalive_command() -> String {
+    let args = wsl::keepalive_args()
+        .into_iter()
+        .map(|arg| {
+            if arg.contains(' ') || arg.contains(';') {
+                format!("\"{arg}\"")
+            } else {
+                arg.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("\"{}\" {args}", wsl::executable())
 }
 
 fn attach_reader(
@@ -381,6 +473,13 @@ mod tests {
         };
 
         assert_eq!(usb_attach_step(&target), UsbAttachStep::AlreadyAttached);
+    }
+
+    #[test]
+    fn usb_attach_steps_that_call_usbipd_attach_require_running_wsl() {
+        assert!(!UsbAttachStep::AlreadyAttached.requires_running_wsl());
+        assert!(UsbAttachStep::AttachOnly.requires_running_wsl());
+        assert!(UsbAttachStep::BindThenAttach.requires_running_wsl());
     }
 
     #[test]

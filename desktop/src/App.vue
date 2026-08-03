@@ -65,6 +65,7 @@ onMounted(() => refresh())
         <h2>运行环境</h2>
         <div class="row"><span>WSL2</span><b>{{ status.wsl.available ? '可用' : '不可用' }}</b></div>
         <div class="hint">{{ status.wsl.path || status.wsl.message }}</div>
+        <button :disabled="!!busy || !status.wsl.available" @click="runAction('启动 WSL', runtimeService.startWsl)">启动 WSL</button>
         <div class="row"><span>usbipd-win</span><b>{{ status.usbipd.available ? '可用' : '不可用' }}</b></div>
         <div class="hint">{{ status.usbipd.path || status.usbipd.message }}</div>
       </div>
