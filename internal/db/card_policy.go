@@ -15,6 +15,7 @@ type CardPolicy struct {
 	NetworkEnabled  bool      `gorm:"column:network_enabled" json:"network_enabled"`
 	VoWiFiEnabled   bool      `gorm:"column:vowifi_enabled" json:"vowifi_enabled"`
 	AirplaneEnabled bool      `gorm:"column:airplane_enabled" json:"airplane_enabled"`
+	RoamingEnabled  bool      `gorm:"column:roaming_enabled" json:"roaming_enabled"`
 	IPVersion       string    `gorm:"column:ip_version" json:"ip_version"`
 	APN             string    `gorm:"column:apn" json:"apn"`
 	Source          string    `gorm:"column:source" json:"source"` // auto | user
@@ -41,6 +42,7 @@ func DefaultCardPolicy(iccid string) CardPolicy {
 		NetworkEnabled:  false,
 		VoWiFiEnabled:   false,
 		AirplaneEnabled: false,
+		RoamingEnabled:  true,
 		IPVersion:       "v4",
 		APN:             "",
 		Source:          "auto",
@@ -102,6 +104,7 @@ func UpsertCardPolicy(p CardPolicy) error {
 			"network_enabled":  p.NetworkEnabled,
 			"vowifi_enabled":   p.VoWiFiEnabled,
 			"airplane_enabled": p.AirplaneEnabled,
+			"roaming_enabled":  p.RoamingEnabled,
 			"ip_version":       p.IPVersion,
 			"apn":              p.APN,
 			"source":           p.Source,

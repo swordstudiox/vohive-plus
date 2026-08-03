@@ -143,6 +143,9 @@ func Init(dbPath string) error {
 		return err
 	}
 
+	cardPolicyHadRoamingColumn := DB.Migrator().HasTable(&CardPolicy{}) &&
+		DB.Migrator().HasColumn(&CardPolicy{}, "roaming_enabled")
+
 	// 自动迁移
 	if err := DB.AutoMigrate(
 		&Device{},
@@ -170,6 +173,11 @@ func Init(dbPath string) error {
 	}
 	if err := MigrateCardPolicyCanonicalICCID(DB); err != nil {
 		return err
+	}
+	if !cardPolicyHadRoamingColumn {
+		if err := InitializeCardPolicyRoamingDefault(DB); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -6,6 +6,7 @@ type PutCardPolicyRequest = {
   network_enabled?: boolean
   vowifi_enabled?: boolean
   airplane_enabled?: boolean
+  roaming_enabled?: boolean
   ip_version?: string
   apn?: string
 }

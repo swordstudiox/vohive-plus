@@ -37,7 +37,8 @@ const mirror = computed<PolicyMirror | null>(() =>
     ? {
         network_enabled: policy.value.network_enabled,
         vowifi_enabled: policy.value.vowifi_enabled,
-        airplane_enabled: policy.value.airplane_enabled
+        airplane_enabled: policy.value.airplane_enabled,
+        roaming_enabled: policy.value.roaming_enabled
       }
     : null
 )
@@ -61,7 +62,8 @@ async function putTriple(next: PolicyMirror): Promise<{ ok: boolean }> {
   const r = await cardsService.putPolicy(props.iccid, {
     network_enabled: next.network_enabled,
     vowifi_enabled: next.vowifi_enabled,
-    airplane_enabled: next.airplane_enabled
+    airplane_enabled: next.airplane_enabled,
+    roaming_enabled: next.roaming_enabled
   })
   return { ok: r.ok }
 }
@@ -74,9 +76,12 @@ const {
   vowifiFailed,
   airplanePending,
   airplaneFailed,
+  roamingPending,
+  roamingFailed,
   onNetworkToggle,
   onVoWiFiToggle,
-  onAirplaneToggle
+  onAirplaneToggle,
+  onRoamingToggle
 } = useCardPolicyToggles(mirror, {
   async applyNetwork(enabled, next) {
     if (mode.value === 'stored') return putTriple(next)
@@ -100,6 +105,11 @@ const {
     const r = await devicesService.setFlightMode(props.deviceId, enabled)
     return { ok: r.ok }
   },
+  async applyRoaming(enabled, next) {
+    if (mode.value === 'stored') return putTriple(next)
+    const r = await devicesService.setRoaming(props.deviceId, enabled)
+    return { ok: r.ok }
+  },
   onChanged() {
     emit('policyChanged')
   }
@@ -117,7 +127,7 @@ const {
     </div>
     <template v-else>
       <div v-if="hint" class="text-[11px] text-amber-600 dark:text-amber-400">{{ hint }}</div>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
         <!-- 网络 -->
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
           <span class="text-sm text-gray-700 dark:text-gray-200">网络</span>
@@ -154,6 +164,19 @@ const {
               v-model="local.airplane_enabled"
               :disabled="local.vowifi_enabled || airplanePending"
               @change="onAirplaneToggle"
+            />
+          </div>
+        </div>
+        <!-- 漫游 -->
+        <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
+          <span class="text-sm text-gray-700 dark:text-gray-200">允许漫游</span>
+          <div class="flex items-center gap-2">
+            <span v-if="roamingFailed" class="text-xs text-orange-500">未生效</span>
+            <el-icon v-if="roamingPending" class="animate-spin text-gray-400"><Loading /></el-icon>
+            <el-switch
+              v-model="local.roaming_enabled"
+              :disabled="roamingPending"
+              @change="onRoamingToggle"
             />
           </div>
         </div>

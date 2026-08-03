@@ -29,7 +29,8 @@ const mirror = computed<PolicyMirror | null>(() =>
     ? {
         network_enabled: props.policy.network_enabled,
         vowifi_enabled: props.policy.vowifi_enabled,
-        airplane_enabled: props.policy.airplane_enabled
+        airplane_enabled: props.policy.airplane_enabled,
+        roaming_enabled: props.policy.roaming_enabled
       }
     : null
 )
@@ -54,9 +55,12 @@ const {
   vowifiFailed,
   airplanePending,
   airplaneFailed,
+  roamingPending,
+  roamingFailed,
   onNetworkToggle,
   onVoWiFiToggle,
-  onAirplaneToggle
+  onAirplaneToggle,
+  onRoamingToggle
 } = useCardPolicyToggles(mirror, {
   async applyNetwork(enabled) {
     if (!props.deviceId) return { ok: false }
@@ -75,6 +79,11 @@ const {
   async applyAirplane(enabled) {
     if (!props.deviceId) return { ok: false }
     const r = await devicesService.setFlightMode(props.deviceId, enabled)
+    return { ok: r.ok }
+  },
+  async applyRoaming(enabled) {
+    if (!props.deviceId) return { ok: false }
+    const r = await devicesService.setRoaming(props.deviceId, enabled)
     return { ok: r.ok }
   },
   onChanged() {
@@ -208,6 +217,28 @@ const sourceLabel = computed(() => {
           </div>
         </div>
 
+
+        <!-- 允许漫游 -->
+        <div
+          class="ui-panel-muted p-3 space-y-1"
+          :class="local.roaming_enabled ? 'border border-lime-300 bg-lime-50/50 dark:bg-lime-900/20' : ''"
+        >
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm font-bold text-gray-800 dark:text-gray-100">允许漫游</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">关闭后模块不会注册漫游网络</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span v-if="roamingFailed" class="text-xs text-orange-500 dark:text-orange-400">未生效</span>
+              <el-icon v-if="roamingPending" class="animate-spin text-gray-400"><Loading /></el-icon>
+              <el-switch
+                v-model="local.roaming_enabled"
+                :disabled="!canToggle || roamingPending"
+                @change="onRoamingToggle"
+              />
+            </div>
+          </div>
+        </div>
 
       </div>
     </div>

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -32,9 +34,27 @@ func main() {
 	// Parse flags
 	var configPath string
 	var backendOnly bool
+	var prepareUSB bool
 	flag.StringVar(&configPath, "c", "config/config.yaml", "config file path")
 	flag.BoolVar(&backendOnly, "backend-only", false, "run as backend-only (disable embedded web UI)")
+	flag.BoolVar(&prepareUSB, "prepare-usb", false, "prepare WSL/Linux USB driver binding for supported DJI/Baiwang modems")
 	flag.Parse()
+
+	if prepareUSB {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		result, err := device.PrepareWSLUSB(ctx, device.WSLUSBPrepareOptions{})
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err != nil {
+			result.Message = "WSL USB 准备失败: " + err.Error()
+			_ = enc.Encode(result)
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		_ = enc.Encode(result)
+		return
+	}
 
 	// 1. 加载配置
 	if err := config.InitGlobalManager(configPath); err != nil {

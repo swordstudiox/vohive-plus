@@ -275,7 +275,6 @@ func (p *Pool) assignWorkerGeneration(worker *Worker) uint64 {
 	return generation
 }
 
-
 func (p *Pool) registerWorkerStarting(worker *Worker) error {
 	if p == nil || worker == nil || strings.TrimSpace(worker.ID) == "" {
 		return fmt.Errorf("worker_nil")
@@ -1864,6 +1863,18 @@ func (p *Pool) SetWorkerAirplanePolicy(deviceID string, airplaneEnabled bool) *W
 		w.Config.VoWiFiEnabled = false
 		w.Config.NetworkEnabled = false
 	}
+	return w
+}
+
+// SetWorkerRoamingPolicy 同步 worker 运行时的漫游策略字段。
+func (p *Pool) SetWorkerRoamingPolicy(deviceID string, roamingEnabled bool) *Worker {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	w := p.workers[deviceID]
+	if w == nil {
+		return nil
+	}
+	w.Config.RoamingEnabled = roamingEnabled
 	return w
 }
 

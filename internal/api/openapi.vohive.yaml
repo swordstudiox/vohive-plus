@@ -659,6 +659,58 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /devices/actions/prepare-usb:
+    post:
+      tags: [devices]
+      summary: 准备 WSL/Linux USB 驱动绑定
+      description: 针对已验证的 DJI/Baiwang 2ca3:4006 模组，在 WSL/Linux 内加载 option/qmi_wwan/cdc_wdm 并生成 QMI、网卡和 AT 设备节点。Windows 侧 usbipd attach 仍由桌面壳处理。
+      responses:
+        '200':
+          description: USB 准备结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  supported_device_found:
+                    type: boolean
+                  prepared:
+                    type: boolean
+                  message:
+                    type: string
+                  actions:
+                    type: array
+                    items:
+                      type: string
+                  devices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        usb_path:
+                          type: string
+                        vendor_id:
+                          type: string
+                        product_id:
+                          type: string
+                        control_path:
+                          type: string
+                        net_interface:
+                          type: string
+                        at_ports:
+                          type: array
+                          items:
+                            type: string
+                        qmi_interface:
+                          type: string
+                        driver_name:
+                          type: string
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+
   /devices/{device_id}/overview:
     get:
       tags: [devices]
@@ -911,6 +963,34 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorMessage'
 
+  /devices/{device_id}/roaming:
+    patch:
+      tags: [devices]
+      summary: 设置设备漫游允许状态
+      parameters:
+        - $ref: '#/components/parameters/DeviceIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnabledStateRequest'
+      responses:
+        '200':
+          description: 漫游策略已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoamingActionResponse'
+        '400':
+          $ref: '#/components/responses/ErrorMessage'
+        '404':
+          $ref: '#/components/responses/ErrorMessage'
+        '409':
+          $ref: '#/components/responses/ErrorMessage'
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+
   /devices/actions/rescan:
     post:
       tags: [devices]
@@ -922,6 +1002,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StatusResponse'
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+
+  /cards/policies:
+    get:
+      tags: [devices]
+      summary: 列出所有卡策略
+      responses:
+        '200':
+          description: 卡策略列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardPoliciesResponse'
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+
+  /cards/{iccid}/policy:
+    get:
+      tags: [devices]
+      summary: 获取指定 ICCID 的卡策略
+      parameters:
+        - $ref: '#/components/parameters/ICCIDPath'
+      responses:
+        '200':
+          description: 卡策略
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardPolicy'
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+    put:
+      tags: [devices]
+      summary: 更新指定 ICCID 的卡策略
+      parameters:
+        - $ref: '#/components/parameters/ICCIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardPolicyUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的卡策略
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardPolicy'
+        '400':
+          $ref: '#/components/responses/ErrorMessage'
         '500':
           $ref: '#/components/responses/ErrorMessage'
 
@@ -1614,6 +1746,13 @@ components:
       schema:
         type: string
       description: 设备 ID
+    ICCIDPath:
+      in: path
+      name: iccid
+      required: true
+      schema:
+        type: string
+      description: SIM 卡 ICCID
     InstanceIDPath:
       in: path
       name: instance_id
@@ -1637,13 +1776,6 @@ components:
         minLength: 2
         maxLength: 2
       description: ISO 3166-1 alpha-2 国家代码
-    ICCIDPath:
-      in: path
-      name: iccid
-      required: true
-      schema:
-        type: string
-
   responses:
     Unauthorized:
       description: 未授权
@@ -2494,6 +2626,8 @@ components:
           type: boolean
         vowifi_enabled:
           type: boolean
+        roaming_enabled:
+          type: boolean
         device_backend:
           type: string
           enum: [at, qmi]
@@ -2780,6 +2914,69 @@ components:
           type: string
         public_ip:
           type: string
+
+    RoamingActionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        roaming_enabled:
+          type: boolean
+        response:
+          type: string
+
+    CardPolicy:
+      type: object
+      properties:
+        iccid:
+          type: string
+        network_enabled:
+          type: boolean
+        vowifi_enabled:
+          type: boolean
+        airplane_enabled:
+          type: boolean
+        roaming_enabled:
+          type: boolean
+        ip_version:
+          type: string
+          enum: [v4, v6, v4v6]
+        apn:
+          type: string
+        source:
+          type: string
+          enum: [auto, user]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CardPolicyUpdateRequest:
+      type: object
+      properties:
+        network_enabled:
+          type: boolean
+        vowifi_enabled:
+          type: boolean
+        airplane_enabled:
+          type: boolean
+        roaming_enabled:
+          type: boolean
+        ip_version:
+          type: string
+          enum: [v4, v6, v4v6]
+        apn:
+          type: string
+
+    CardPoliciesResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/CardPolicy'
 
     ProxyInstanceDTO:
       type: object

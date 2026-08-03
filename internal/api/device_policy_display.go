@@ -15,6 +15,7 @@ func cardPolicyFromDeviceConfig(iccid string, cfg config.DeviceConfig) db.CardPo
 		NetworkEnabled:  cfg.NetworkEnabled,
 		VoWiFiEnabled:   cfg.VoWiFiEnabled,
 		AirplaneEnabled: cfg.AirplaneEnabled,
+		RoamingEnabled:  cfg.RoamingEnabled,
 		IPVersion:       cfg.IPVersion,
 		APN:             cfg.APN,
 		Source:          "user",
@@ -37,6 +38,7 @@ func (s *Server) currentEffectiveDevicePolicy(deviceID string) (iccid string, ne
 type offlineDevicePolicy struct {
 	NetworkEnabled bool
 	VoWiFiEnabled  bool
+	RoamingEnabled bool
 	SMSEnabled     bool
 	IPVersion      string
 	APN            string
@@ -46,7 +48,7 @@ type offlineDevicePolicy struct {
 // device → 当前 ICCID → card_policies。无 ICCID 或无策略记录时返回安全默认。
 // SMS 恒为启用（写死系统语义），与 card_policies 无关。
 func resolveOfflineDevicePolicy(deviceID string) offlineDevicePolicy {
-	out := offlineDevicePolicy{SMSEnabled: true, IPVersion: "v4"}
+	out := offlineDevicePolicy{RoamingEnabled: true, SMSEnabled: true, IPVersion: "v4"}
 	iccid := db.CurrentICCIDForDevice(deviceID)
 	if iccid == "" {
 		return out
@@ -60,6 +62,7 @@ func resolveOfflineDevicePolicy(deviceID string) offlineDevicePolicy {
 	}
 	out.NetworkEnabled = pol.NetworkEnabled
 	out.VoWiFiEnabled = pol.VoWiFiEnabled
+	out.RoamingEnabled = pol.RoamingEnabled
 	if pol.IPVersion != "" {
 		out.IPVersion = pol.IPVersion
 	}

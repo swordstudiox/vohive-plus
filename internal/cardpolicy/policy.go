@@ -6,6 +6,7 @@ type Policy struct {
 	NetworkEnabled  bool
 	VoWiFiEnabled   bool
 	AirplaneEnabled bool
+	RoamingEnabled  bool
 	IPVersion       string
 	APN             string
 }

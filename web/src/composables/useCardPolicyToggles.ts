@@ -5,6 +5,7 @@ export type PolicyMirror = {
   network_enabled: boolean
   vowifi_enabled: boolean
   airplane_enabled: boolean
+  roaming_enabled: boolean
 }
 
 export type ToggleResult = { ok: boolean }
@@ -15,6 +16,7 @@ export type CardPolicyExecutors = {
   applyNetwork: (enabled: boolean, next: PolicyMirror) => Promise<ToggleResult>
   applyVoWiFi: (enabled: boolean, next: PolicyMirror) => Promise<ToggleResult>
   applyAirplane: (enabled: boolean, next: PolicyMirror) => Promise<ToggleResult>
+  applyRoaming: (enabled: boolean, next: PolicyMirror) => Promise<ToggleResult>
   onChanged?: () => void
 }
 
@@ -30,7 +32,7 @@ function nextMirror(
 ): PolicyMirror {
   if (field === 'network_enabled') {
     return val
-      ? { network_enabled: true, vowifi_enabled: false, airplane_enabled: false }
+      ? { ...cur, network_enabled: true, vowifi_enabled: false, airplane_enabled: false }
       : { ...cur, network_enabled: false }
   }
   if (field === 'vowifi_enabled') {
@@ -38,10 +40,15 @@ function nextMirror(
       ? { ...cur, network_enabled: false, vowifi_enabled: true }
       : { ...cur, vowifi_enabled: false }
   }
-  // airplane_enabled
+  if (field === 'airplane_enabled') {
+    return val
+      ? { ...cur, network_enabled: false, vowifi_enabled: false, airplane_enabled: true }
+      : { ...cur, airplane_enabled: false }
+  }
+  // roaming_enabled
   return val
-    ? { network_enabled: false, vowifi_enabled: false, airplane_enabled: true }
-    : { ...cur, airplane_enabled: false }
+    ? { ...cur, roaming_enabled: true }
+    : { ...cur, roaming_enabled: false }
 }
 
 export function useCardPolicyToggles(
@@ -51,7 +58,8 @@ export function useCardPolicyToggles(
   const local = ref<PolicyMirror>({
     network_enabled: false,
     vowifi_enabled: false,
-    airplane_enabled: false
+    airplane_enabled: false,
+    roaming_enabled: true
   })
 
   const networkPending = ref(false)
@@ -60,6 +68,8 @@ export function useCardPolicyToggles(
   const vowifiFailed = ref(false)
   const airplanePending = ref(false)
   const airplaneFailed = ref(false)
+  const roamingPending = ref(false)
+  const roamingFailed = ref(false)
 
   // 上游变化原地同步各字段（不整体替换对象，避免 el-switch 在 element-plus 2.13 崩溃）
   watch(
@@ -69,9 +79,11 @@ export function useCardPolicyToggles(
       local.value.network_enabled = p.network_enabled
       local.value.vowifi_enabled = p.vowifi_enabled
       local.value.airplane_enabled = p.airplane_enabled
+      local.value.roaming_enabled = p.roaming_enabled
       networkFailed.value = false
       vowifiFailed.value = false
       airplaneFailed.value = false
+      roamingFailed.value = false
     },
     { immediate: true }
   )
@@ -91,6 +103,7 @@ export function useCardPolicyToggles(
     local.value.network_enabled = next.network_enabled
     local.value.vowifi_enabled = next.vowifi_enabled
     local.value.airplane_enabled = next.airplane_enabled
+    local.value.roaming_enabled = next.roaming_enabled
     executors.onChanged?.()
   }
 
@@ -109,6 +122,7 @@ export function useCardPolicyToggles(
     local.value.network_enabled = next.network_enabled
     local.value.vowifi_enabled = next.vowifi_enabled
     local.value.airplane_enabled = next.airplane_enabled
+    local.value.roaming_enabled = next.roaming_enabled
     executors.onChanged?.()
   }
 
@@ -127,6 +141,26 @@ export function useCardPolicyToggles(
     local.value.network_enabled = next.network_enabled
     local.value.vowifi_enabled = next.vowifi_enabled
     local.value.airplane_enabled = next.airplane_enabled
+    local.value.roaming_enabled = next.roaming_enabled
+    executors.onChanged?.()
+  }
+
+  async function onRoamingToggle(rawVal: string | number | boolean) {
+    const val = rawVal as boolean
+    roamingPending.value = true
+    roamingFailed.value = false
+    const next = nextMirror(local.value, 'roaming_enabled', val)
+    const result = await executors.applyRoaming(val, next)
+    roamingPending.value = false
+    if (!result.ok) {
+      local.value.roaming_enabled = !val
+      roamingFailed.value = true
+      return
+    }
+    local.value.network_enabled = next.network_enabled
+    local.value.vowifi_enabled = next.vowifi_enabled
+    local.value.airplane_enabled = next.airplane_enabled
+    local.value.roaming_enabled = next.roaming_enabled
     executors.onChanged?.()
   }
 
@@ -138,8 +172,11 @@ export function useCardPolicyToggles(
     vowifiFailed,
     airplanePending,
     airplaneFailed,
+    roamingPending,
+    roamingFailed,
     onNetworkToggle,
     onVoWiFiToggle,
-    onAirplaneToggle
+    onAirplaneToggle,
+    onRoamingToggle
   }
 }

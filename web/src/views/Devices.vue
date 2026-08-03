@@ -974,9 +974,14 @@ async function refreshDiscoveredForAdd() {
     const result = await devicesStore.fetchDiscovered()
     if (result.ok) {
       discovered.value = Array.isArray(storeDiscovered.value) ? storeDiscovered.value : []
+    } else {
+      discovered.value = []
+      ElMessage.warning(result.error.message || '设备探测失败')
     }
-  } catch {
-    // Ignore transient discovery errors; UI will keep previous list.
+  } catch (e: unknown) {
+    discovered.value = []
+    const err = toAppError(e)
+    ElMessage.warning(err.message || '设备探测失败')
   } finally {
     discovering.value = false
   }

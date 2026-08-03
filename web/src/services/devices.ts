@@ -122,8 +122,16 @@ export const devicesService = {
       return (res?.data?.config || null) as DeviceConfigDTO | null
     })
   },
+  prepareUSB() {
+    return callService(async () => {
+      const res = await api.post('/devices/actions/prepare-usb')
+      return res.data
+    })
+  },
   listDiscovered() {
     return callService(async () => {
+      const prepared = await devicesService.prepareUSB()
+      if (!prepared.ok) throw new Error(prepared.error.message || 'WSL USB 准备失败')
       const res = await api.get('/devices/discovered', { params: { with_imei: 1 } })
       return (res.data?.devices || []) as DiscoveredDevice[]
     })
@@ -142,6 +150,12 @@ export const devicesService = {
         flightMode: res.data?.flight_mode === true,
         message: res.data?.message || ''
       }
+    })
+  },
+  setRoaming(id: string, roamingEnabled: boolean) {
+    return callService(async () => {
+      await api.patch(`/devices/${id}/roaming`, { enabled: roamingEnabled })
+      return true
     })
   },
   rotateIP(id: string) {
@@ -206,6 +220,8 @@ export const devicesService = {
   },
   rescanAll() {
     return callService(async () => {
+      const prepared = await devicesService.prepareUSB()
+      if (!prepared.ok) throw new Error(prepared.error.message || 'WSL USB 准备失败')
       await api.post('/devices/actions/rescan')
       return true
     })

@@ -72,7 +72,7 @@ func TestPutCardPolicyEndpoint(t *testing.T) {
 	r := gin.Default()
 	r.PUT("/api/cards/:iccid/policy", s.handlePutCardPolicy)
 
-	body := `{"network_enabled":true,"vowifi_enabled":true,"ip_version":"v4v6","apn":"ims"}`
+	body := `{"network_enabled":true,"vowifi_enabled":true,"roaming_enabled":false,"ip_version":"v4v6","apn":"ims"}`
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/cards/8986005/policy", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -82,8 +82,35 @@ func TestPutCardPolicyEndpoint(t *testing.T) {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
 	got, _ := db.GetCardPolicy("8986005")
-	if !got.NetworkEnabled || !got.VoWiFiEnabled || got.IPVersion != "v4v6" || got.APN != "ims" {
+	if !got.NetworkEnabled || !got.VoWiFiEnabled || got.RoamingEnabled || got.IPVersion != "v4v6" || got.APN != "ims" {
 		t.Fatalf("未成功更新: %+v", got)
+	}
+}
+
+func TestPutCardPolicyRoamingFieldPreservesWhenOmitted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	_ = db.UpsertCardPolicy(db.CardPolicy{ICCID: "8986roam777", RoamingEnabled: false, IPVersion: "v4", Source: "user"})
+
+	s := &Server{pool: device.NewPool(&config.Config{})}
+	r := gin.Default()
+	r.PUT("/api/cards/:iccid/policy", s.handlePutCardPolicy)
+
+	body := `{"network_enabled":true}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/cards/8986roam777/policy", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	got, _ := db.GetCardPolicy("8986roam777")
+	if got.RoamingEnabled {
+		t.Fatalf("未传 roaming_enabled 时不应覆盖用户已关闭的漫游策略: %+v", got)
+	}
+	if !got.NetworkEnabled {
+		t.Fatalf("network_enabled 未写入: %+v", got)
 	}
 }
 
@@ -270,5 +297,47 @@ func TestPutCardPolicyAirplaneField(t *testing.T) {
 	}
 	if !got.NetworkEnabled {
 		t.Fatalf("未传的 network 被错误覆盖: %+v", got)
+	}
+}
+
+func TestDeviceRoamingPatchWritesPolicyAndUsesExpectedATCommand(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "wwan-roam", Config: config.DeviceConfig{ID: "wwan-roam", ATPort: "/dev/ttyUSB2"}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986roam001")
+	injectWorker(p, w)
+
+	var gotCmd string
+	oldExec := executeRoamingATForWorker
+	executeRoamingATForWorker = func(worker *device.Worker, enabled bool) (string, error) {
+		gotCmd = roamingServiceATCommand(enabled)
+		return "OK", nil
+	}
+	t.Cleanup(func() { executeRoamingATForWorker = oldExec })
+
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/roaming", s.handleDeviceRoamingPatch)
+
+	body := `{"enabled":false}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-roam/roaming", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if gotCmd != `AT+QCFG="roamservice",1,1` {
+		t.Fatalf("cmd=%q", gotCmd)
+	}
+	pol, err := db.GetCardPolicy("8986roam001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pol.RoamingEnabled {
+		t.Fatalf("roaming_enabled 应落库为 false: %+v", pol)
 	}
 }

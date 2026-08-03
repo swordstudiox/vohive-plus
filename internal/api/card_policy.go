@@ -66,6 +66,7 @@ func (s *Server) handlePutCardPolicy(c *gin.Context) {
 		NetworkEnabled  *bool  `json:"network_enabled"`
 		VoWiFiEnabled   *bool  `json:"vowifi_enabled"`
 		AirplaneEnabled *bool  `json:"airplane_enabled"`
+		RoamingEnabled  *bool  `json:"roaming_enabled"`
 		IPVersion       string `json:"ip_version"`
 		APN             string `json:"apn"`
 	}
@@ -88,6 +89,9 @@ func (s *Server) handlePutCardPolicy(c *gin.Context) {
 	}
 	if req.AirplaneEnabled != nil {
 		pol.AirplaneEnabled = *req.AirplaneEnabled
+	}
+	if req.RoamingEnabled != nil {
+		pol.RoamingEnabled = *req.RoamingEnabled
 	}
 	if req.IPVersion != "" {
 		pol.IPVersion = req.IPVersion

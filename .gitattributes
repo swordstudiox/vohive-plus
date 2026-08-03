@@ -1,0 +1,2 @@
+*.sh text eol=lf
+desktop/src-tauri/resources/vohive/vohive-open_linux_amd64 binary

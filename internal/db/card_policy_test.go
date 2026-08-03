@@ -4,14 +4,12 @@ import (
 	"testing"
 )
 
-
-
 func TestCardPolicyTableMigrated(t *testing.T) {
 	openTestDB(t)
 	if !DB.Migrator().HasTable(&CardPolicy{}) {
 		t.Fatal("card_policies 表未建")
 	}
-	for _, col := range []string{"iccid", "network_enabled", "vowifi_enabled", "airplane_enabled", "ip_version", "apn", "source"} {
+	for _, col := range []string{"iccid", "network_enabled", "vowifi_enabled", "airplane_enabled", "roaming_enabled", "ip_version", "apn", "source"} {
 		if !DB.Migrator().HasColumn(&CardPolicy{}, col) {
 			t.Fatalf("card_policies 缺列 %s", col)
 		}
@@ -25,6 +23,9 @@ func TestDefaultCardPolicy(t *testing.T) {
 	}
 	if p.NetworkEnabled || p.VoWiFiEnabled || p.AirplaneEnabled {
 		t.Fatal("默认应全关")
+	}
+	if !p.RoamingEnabled {
+		t.Fatal("默认应允许漫游，避免升级后静默禁止漫游")
 	}
 	if p.IPVersion != "v4" {
 		t.Fatalf("默认 ip=%q，应 v4", p.IPVersion)
@@ -81,7 +82,7 @@ func TestUpsertCardPolicyUserOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	in := CardPolicy{ICCID: iccid, NetworkEnabled: true, VoWiFiEnabled: true, AirplaneEnabled: true, IPVersion: "v4v6", Source: "user"}
+	in := CardPolicy{ICCID: iccid, NetworkEnabled: true, VoWiFiEnabled: true, AirplaneEnabled: true, RoamingEnabled: false, IPVersion: "v4v6", Source: "user"}
 	if err := UpsertCardPolicy(in); err != nil {
 		t.Fatalf("Upsert error=%v", err)
 	}
@@ -92,6 +93,9 @@ func TestUpsertCardPolicyUserOverride(t *testing.T) {
 	}
 	if !got.NetworkEnabled || !got.VoWiFiEnabled || !got.AirplaneEnabled {
 		t.Fatalf("写入的字段应原样落库（airplane 独立存储）: %+v", got)
+	}
+	if got.RoamingEnabled {
+		t.Fatalf("roaming_enabled=false 应可被用户策略覆盖: %+v", got)
 	}
 	if got.IPVersion != "v4v6" || got.Source != "user" {
 		t.Fatalf("覆盖未生效: %+v", got)

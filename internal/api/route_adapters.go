@@ -3,9 +3,11 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/iniwex5/vohive/internal/db"
+	"github.com/iniwex5/vohive/internal/device"
 )
 
 type enabledPatchRequest struct {
@@ -84,3 +86,55 @@ func vowifiEnablePolicyMutation(p *db.CardPolicy) { p.VoWiFiEnabled = true }
 
 // vowifiDisablePolicyMutation 关 VoWiFi 的落库副作用：只清 vowifi，保留用户飞行意图以便回退。
 func vowifiDisablePolicyMutation(p *db.CardPolicy) { p.VoWiFiEnabled = false }
+
+func roamingServiceATCommand(enabled bool) string {
+	return device.RoamingServiceATCommand(enabled)
+}
+
+var executeRoamingATForWorker = func(worker *device.Worker, enabled bool) (string, error) {
+	return device.ExecuteRoamingATForWorker(worker, enabled, 5*time.Second)
+}
+
+func (s *Server) handleDeviceRoamingPatch(c *gin.Context) {
+	var req enabledPatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "enabled 为必填项"})
+		return
+	}
+
+	deviceID := deviceIDParam(c)
+	if s.pool == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
+		return
+	}
+	worker := s.pool.GetWorker(deviceID)
+	if worker == nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到或未运行"})
+		return
+	}
+	if s.pool.IsESIMSwitching(deviceID) {
+		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "设备正在切卡，请稍后再切换漫游策略"})
+		return
+	}
+
+	resp, err := executeRoamingATForWorker(worker, *req.Enabled)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "切换漫游策略失败: " + err.Error()})
+		return
+	}
+	iccid, _, err := s.patchCardPolicyForDevice(deviceID, func(p *db.CardPolicy) {
+		p.RoamingEnabled = *req.Enabled
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+	if iccid != "" {
+		s.pool.SetWorkerRoamingPolicy(deviceID, *req.Enabled)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":          "ok",
+		"roaming_enabled": *req.Enabled,
+		"response":        resp,
+	})
+}

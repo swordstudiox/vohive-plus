@@ -18,6 +18,9 @@
 /web/node_modules/
 /web-reader/dist/
 /web-reader/node_modules/
+/desktop/dist/
+/desktop/node_modules/
+/desktop/src-tauri/target/
 /internal/web/dist/
 /dist/*
 /raspberry-backups/
@@ -49,6 +52,12 @@ coverage.out
 *.tmp
 *.temp
 .cache/
+
+# 本地构建工具链和下载缓存
+/.toolchains/
+/downloads/
+/.pnpm-store/
+
 /server
 /reader
 vohive.code-workspace

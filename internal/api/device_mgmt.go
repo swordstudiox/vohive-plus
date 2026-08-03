@@ -51,6 +51,7 @@ type deviceConfigDTO struct {
 	IPVersion             string  `json:"ip_version,omitempty"`
 	NetworkEnabled        bool    `json:"network_enabled"`
 	VoWiFiEnabled         bool    `json:"vowifi_enabled"`
+	RoamingEnabled        bool    `json:"roaming_enabled"`
 	DeviceBackend         string  `json:"device_backend,omitempty"`
 }
 
@@ -80,6 +81,7 @@ func deviceConfigToDTO(c config.DeviceConfig) deviceConfigDTO {
 		IPVersion:             c.IPVersion,
 		NetworkEnabled:        c.NetworkEnabled,
 		VoWiFiEnabled:         c.VoWiFiEnabled,
+		RoamingEnabled:        c.RoamingEnabled,
 		DeviceBackend:         c.DeviceBackend,
 	}
 }
@@ -135,6 +137,7 @@ func deviceConfigFromDTOWithBase(d deviceConfigDTO, base *config.DeviceConfig) c
 		IPVersion:             strings.TrimSpace(d.IPVersion),
 		NetworkEnabled:        d.NetworkEnabled,
 		VoWiFiEnabled:         d.VoWiFiEnabled,
+		RoamingEnabled:        d.RoamingEnabled,
 		DeviceBackend:         d.DeviceBackend,
 	}
 }
@@ -230,11 +233,12 @@ func overviewDisplayConfig(runtime, persisted config.DeviceConfig, hasPersisted 
 	cfg.USBPath = runtime.USBPath
 	cfg.QMIDevice = runtime.QMIDevice
 	cfg.AudioDevice = runtime.AudioDevice
-	// 策略字段（network/vowifi/airplane/ip/apn）已改为跟卡走、只存在于运行时投影，
+	// 策略字段（network/vowifi/airplane/roaming/ip/apn）已改为跟卡走、只存在于运行时投影，
 	// 不再来自 persisted(config.yaml)。必须取 runtime，否则概览显示恒为 off。
 	cfg.NetworkEnabled = runtime.NetworkEnabled
 	cfg.VoWiFiEnabled = runtime.VoWiFiEnabled
 	cfg.AirplaneEnabled = runtime.AirplaneEnabled
+	cfg.RoamingEnabled = runtime.RoamingEnabled
 	cfg.IPVersion = runtime.IPVersion
 	cfg.APN = runtime.APN
 	// SMS 是系统不变量（恒开），不随卡策略/投影时序变化，直接置真，
@@ -1217,6 +1221,7 @@ func deviceConfigForAdd(cfg config.DeviceConfig) config.DeviceConfig {
 	cfg.NetworkEnabled = false
 	cfg.VoWiFiEnabled = false
 	cfg.AirplaneEnabled = false
+	cfg.RoamingEnabled = true
 	cfg.SMSEnabled = true
 	return cfg
 }

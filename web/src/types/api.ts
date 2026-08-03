@@ -143,6 +143,7 @@ export type DeviceConfigDTO = {
   qmi_proxy_path?: string
   qmi_proxy_executable?: string
   vowifi_enabled?: boolean
+  roaming_enabled?: boolean
   device_backend?: 'at' | 'qmi' | 'mbim'
   operator_selection_mode?: string
   operator_selection_plmn?: string
@@ -334,6 +335,7 @@ export type CardPolicy = {
   network_enabled: boolean
   vowifi_enabled: boolean
   airplane_enabled: boolean
+  roaming_enabled: boolean
   ip_version: 'v4' | 'v6' | 'v4v6'
   apn: string
   source: 'auto' | 'user'

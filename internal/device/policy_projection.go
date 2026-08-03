@@ -18,6 +18,7 @@ func applyPolicyToWorker(w *Worker, p cardpolicy.Policy) {
 	w.Config.NetworkEnabled = p.NetworkEnabled
 	w.Config.VoWiFiEnabled = p.VoWiFiEnabled
 	w.Config.AirplaneEnabled = p.AirplaneEnabled
+	w.Config.RoamingEnabled = p.RoamingEnabled
 	if p.VoWiFiEnabled {
 		w.Config.AirplaneEnabled = true
 	}
@@ -54,7 +55,11 @@ func (p *Pool) resolveAndApplyPolicy(worker *Worker, reason string) policyApplyR
 	applyPolicyToWorker(worker, pol)
 	logger.Info("已投影卡策略", "device", worker.ID, "iccid", iccid,
 		"network", pol.NetworkEnabled, "vowifi", pol.VoWiFiEnabled,
-		"airplane", worker.Config.AirplaneEnabled, "reason", reason)
+		"airplane", worker.Config.AirplaneEnabled, "roaming", pol.RoamingEnabled, "reason", reason)
+
+	if err := p.applyRoamingPreference(worker, pol.RoamingEnabled, reason); err != nil {
+		logger.Warn("应用漫游偏好失败", "device", worker.ID, "reason", reason, "err", err)
+	}
 
 	// 三态分支：VoWiFi / 纯飞行 / 在线(含连网)。射频模式按策略真正切换，
 	// 补齐此前“airplane 字段被投影但从不执行”的缺口。

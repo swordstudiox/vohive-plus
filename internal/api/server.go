@@ -268,6 +268,7 @@ func (s *Server) newRouter() *gin.Engine {
 
 		api.GET("/devices", s.handleDeviceMgmtList)                                            // 获取设备列表（管理页用）
 		api.POST("/devices", s.handleDeviceMgmtAddDevice)                                      // 添加新设备
+		api.POST("/devices/actions/prepare-usb", s.handleDevicePrepareUSB)                     // 准备 WSL/Linux USB 驱动绑定
 		api.GET("/devices/discovered", s.handleDeviceMgmtDiscovered)                           // 获取已发现的硬件设备
 		api.POST("/devices/actions/rescan", s.handleDeviceRescan)                              // 手动触发设备重扫描
 		api.GET("/devices/:device_id/overview/stream", s.handleDeviceMgmtOverviewStreamSingle) // SSE 单体深层实时流
@@ -284,6 +285,7 @@ func (s *Server) newRouter() *gin.Engine {
 		api.PATCH("/devices/:device_id/usbnet-mode", s.handleDeviceMgmtSetUSBNetMode)          // 设置 USBNET 模式
 		api.PATCH("/devices/:device_id/flight-mode", s.handleDeviceMgmtSetFlightMode)          // 切换飞行模式
 		api.PATCH("/devices/:device_id/network", s.handleDeviceNetworkPatch)
+		api.PATCH("/devices/:device_id/roaming", s.handleDeviceRoamingPatch)
 
 		api.GET("/cards/policies", s.handleListCardPolicies)
 		api.GET("/cards/:iccid/policy", s.handleGetCardPolicy)
