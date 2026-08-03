@@ -58,6 +58,14 @@ pub fn is_distro_running(list_output: &str) -> bool {
         .any(|line| line.contains(DISTRO) && line.contains("Running"))
 }
 
+pub fn current_distro_running() -> Result<bool, String> {
+    match run_output_with_timeout(DEFAULT_WSL, &["-l", "-v"], Duration::from_secs(3)) {
+        Ok(out) if out.status.success() => Ok(is_distro_running(&clean_output(&out.stdout))),
+        Ok(out) => Err(clean_output(&out.stderr)),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
 pub fn wait_until_distro_running(timeout: Duration) -> Result<(), String> {
     let start = Instant::now();
     let mut last_error = String::new();

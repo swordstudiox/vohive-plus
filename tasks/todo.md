@@ -268,6 +268,22 @@
 - [x] UI 在运行环境卡片提供“启动 WSL”按钮，并复用现有提示/状态刷新链路。
 - [x] 重新验证、重编译桌面 debug exe 和安装包，并提交本地 git。
 
+### 阶段 4I：WSL 手动启动边界与 USB 准备重试
+
+### 根因
+
+- [x] 用户确认：`连接 USB 到 WSL` 不应自动启动 WSL；如果 WSL 未运行，只提示需要先启动 WSL。
+- [x] 截图中的 `绑定 interface 1-1:1.4 到 qmi_wwan 失败: write .../bind: no such device` 可在 WSL 内复现；失败后短时间内内核实际完成了 `qmi_wwan 1-1:1.4` 绑定并生成 `/dev/cdc-wdm0`、`wwan0`。
+- [x] 根因是 `option` 释放 `1-1:1.4` 后，立即写 `qmi_wwan/bind` 存在 WSL/USB/IP 内核状态切换竞态；当前代码把一次 `no such device` 当成最终失败。
+
+### 修复计划
+
+- [x] 新增 RED 测试：attach preflight 在 WSL 未 Running 时返回“请先启动 WSL”，且不代表自动启动。
+- [x] 新增 RED 测试：`qmi_wwan/bind` 首次返回 `no such device` 后，短暂重试/复查 driver，最终已绑定时不失败。
+- [x] `attach_usb` 改为检查目标 WSL2 发行版是否 Running；未 Running 时返回提示和保活命令建议，不调用 `ensure_wsl_running`。
+- [x] `PrepareWSLUSB` 增加可测试的 sysfs 写入/等待注入点，并对 qmi bind 瞬时失败做短轮询。
+- [x] 重新验证、重编译桌面 debug exe 和安装包，并提交本地 git。
+
 ### 阶段 4 验证标准
 
 - [ ] 从 Windows 双击桌面程序后，可以一键启动 WSL2 内的 VoHive。
@@ -336,4 +352,5 @@
 - 2026-08-03 阶段 4G 代码审查修复：用户确认默认 `admin/admin` 和默认监听所有地址本轮以及以后都不修；其余审查问题已修复，包括卡策略竞态、漫游 live API 状态一致性、APN 清空、prepare-usb 业务失败识别、策略开关错误展示、桌面壳命令超时、USB attach 幂等、资源缺失校验和 DTO 契约收敛。提交前验证：`git diff --check` 仅 CRLF 提示；`go test ./internal/api ./internal/db ./internal/device -count=1`、`node --test tests/*.test.ts`、`node node_modules/vue-tsc/bin/vue-tsc.js --noEmit`、`node node_modules/vite/bin/vite.js build`、`cargo test`、`pnpm run build` 均通过。
 - 2026-08-03 产物重编译：已重新执行 Web build 并同步到 `internal/web/dist`；已在 WSL2 中重新编译 Linux amd64 后端二进制 `dist/vohive-open_linux_amd64`，并覆盖桌面壳内置资源 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`；已执行 `pnpm tauri build --debug` 重新生成 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe` 和 NSIS debug 安装包。
 - 2026-08-03 阶段 4H 修复：截图中的 `usbipd: error: There is no WSL 2 distribution running` 根因已修复；桌面壳新增“启动 WSL”按钮，`attach_usb` 在执行 `usbipd attach --wsl` 前会自动启动并保活 `Ubuntu-24.04`，不再要求用户手动打开 WSL 终端。验证：新增 RED 测试后确认失败；实现后 `cargo test` 13 项通过、`node --test tests/*.test.mjs` 2 项通过、`pnpm run build` 通过、`pnpm tauri build --debug` 通过。
+- 2026-08-03 阶段 4I 修正：用户确认 `连接 USB 到 WSL` 不应自动启动 WSL；已改为仅检查 `Ubuntu-24.04` 是否 Running，未运行时提示先点“启动 WSL”。`PrepareWSLUSB` 对 `qmi_wwan/bind` 瞬时 `no such device` 增加重试和 driver 复查；新后端实机 `--prepare-usb` 返回 `prepared=true`，设备为 `/dev/cdc-wdm0` + `wwan0` + `/dev/ttyUSB0-3`。验证：RED 测试确认失败后修复，`go test ./internal/api ./internal/db ./internal/device -count=1`、`cargo test`、`node --test tests/*.test.mjs`、`pnpm run build`、`pnpm tauri build --debug` 均通过。
 - 待实施后补充：VirtualBox 路线实际体积、启动耗时、USB 稳定性。

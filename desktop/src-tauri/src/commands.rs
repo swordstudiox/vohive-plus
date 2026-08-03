@@ -52,6 +52,16 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
     };
 
     let step = usb_attach_step(target);
+    if let Err(message) = usb_attach_preflight(step, wsl::current_distro_running().unwrap_or(false))
+    {
+        return action(
+            false,
+            message,
+            Some(build_status(&state)),
+            Some(suggested_wsl_keepalive_command()),
+        );
+    }
+
     match step {
         UsbAttachStep::AlreadyAttached => {
             return action(true, "USB 已连接到 WSL", Some(build_status(&state)), None);
@@ -79,17 +89,6 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
             }
         }
         UsbAttachStep::AttachOnly => {}
-    }
-
-    if step.requires_running_wsl() {
-        if let Err(err) = ensure_wsl_running(&state) {
-            return action(
-                false,
-                format!("连接 USB 前启动 WSL 失败: {err}"),
-                Some(build_status(&state)),
-                Some(suggested_wsl_keepalive_command()),
-            );
-        }
     }
 
     let attach = run_output(&path, &["attach", "--wsl", "--busid", &target.busid]);
@@ -305,7 +304,7 @@ fn install_or_import(app: &AppHandle, state: &State<'_, AppState>) -> Result<(),
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UsbAttachStep {
     AlreadyAttached,
     BindThenAttach,
@@ -324,6 +323,13 @@ impl UsbAttachStep {
     fn requires_running_wsl(self) -> bool {
         !matches!(self, UsbAttachStep::AlreadyAttached)
     }
+}
+
+fn usb_attach_preflight(step: UsbAttachStep, wsl_running: bool) -> Result<(), String> {
+    if step.requires_running_wsl() && !wsl_running {
+        return Err("请先点击“启动 WSL”，待 WSL 运行后再连接 USB 到 WSL。".to_string());
+    }
+    Ok(())
 }
 
 fn validate_vohive_resources(bin: &Path, cfg: &Path, script: &Path) -> Result<(), String> {
@@ -451,7 +457,10 @@ echo killed"#
 
 #[cfg(test)]
 mod tests {
-    use super::{backend_stop_script, usb_attach_step, validate_vohive_resources, UsbAttachStep};
+    use super::{
+        backend_stop_script, usb_attach_preflight, usb_attach_step, validate_vohive_resources,
+        UsbAttachStep,
+    };
     use crate::models::UsbDevice;
     use std::fs;
 
@@ -480,6 +489,20 @@ mod tests {
         assert!(!UsbAttachStep::AlreadyAttached.requires_running_wsl());
         assert!(UsbAttachStep::AttachOnly.requires_running_wsl());
         assert!(UsbAttachStep::BindThenAttach.requires_running_wsl());
+    }
+
+    #[test]
+    fn usb_attach_preflight_requires_user_started_wsl_for_attach_steps() {
+        let err = usb_attach_preflight(UsbAttachStep::AttachOnly, false)
+            .expect_err("attach must not auto-start WSL");
+
+        assert!(err.contains("启动 WSL"));
+        assert!(err.contains("再连接 USB 到 WSL"));
+    }
+
+    #[test]
+    fn usb_attach_preflight_allows_already_attached_without_running_wsl_check() {
+        assert!(usb_attach_preflight(UsbAttachStep::AlreadyAttached, false).is_ok());
     }
 
     #[test]

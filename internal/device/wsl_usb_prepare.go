@@ -25,6 +25,8 @@ type WSLUSBPrepareOptions struct {
 	WaitTimeout          time.Duration
 	PollInterval         time.Duration
 	Modprobe             func(context.Context, string) error
+	SysfsWrite           func(string, string) error
+	Sleep                func(time.Duration)
 }
 
 type WSLUSBPrepareResult struct {
@@ -67,14 +69,14 @@ func PrepareWSLUSB(ctx context.Context, opts WSLUSBPrepareOptions) (WSLUSBPrepar
 		result.Actions = append(result.Actions, "modprobe:"+module)
 	}
 
-	if action, err := ensureOptionNewID(opts.USBSerialDriversPath, baiwangVendorID, baiwangProductID); err != nil {
+	if action, err := ensureOptionNewID(opts.USBSerialDriversPath, baiwangVendorID, baiwangProductID, opts.SysfsWrite); err != nil {
 		return result, err
 	} else if action != "" {
 		result.Actions = append(result.Actions, action)
 	}
 
 	for _, usbPath := range roots {
-		if action, err := bindBaiwangQMIInterface(opts.USBDriversPath, usbPath); err != nil {
+		if action, err := bindBaiwangQMIInterface(opts, usbPath); err != nil {
 			return result, err
 		} else {
 			result.Actions = append(result.Actions, action...)
@@ -125,6 +127,12 @@ func normalizeWSLUSBPrepareOptions(opts WSLUSBPrepareOptions) WSLUSBPrepareOptio
 	if opts.Modprobe == nil {
 		opts.Modprobe = defaultModprobe
 	}
+	if opts.SysfsWrite == nil {
+		opts.SysfsWrite = writeSysfsValue
+	}
+	if opts.Sleep == nil {
+		opts.Sleep = time.Sleep
+	}
 	return opts
 }
 
@@ -163,13 +171,13 @@ func findBaiwangUSBDevices(usbDevicesPath string) ([]string, error) {
 	return out, nil
 }
 
-func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string) (string, error) {
+func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string, write func(string, string) error) (string, error) {
 	newIDPath := filepath.Join(usbSerialDriversPath, "option1", "new_id")
 	idLine := strings.ToLower(strings.TrimSpace(vendorID + " " + productID))
 	if existing := strings.ToLower(readTextFile(newIDPath)); containsLine(existing, idLine) {
 		return "", nil
 	}
-	if err := writeSysfsValue(newIDPath, idLine); err != nil {
+	if err := write(newIDPath, idLine); err != nil {
 		if isAlreadyBoundSysfsError(err) {
 			return "", nil
 		}
@@ -178,7 +186,7 @@ func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string) (string
 	return "option-new-id:" + strings.ReplaceAll(idLine, " ", ":"), nil
 }
 
-func bindBaiwangQMIInterface(usbDriversPath, usbPath string) ([]string, error) {
+func bindBaiwangQMIInterface(opts WSLUSBPrepareOptions, usbPath string) ([]string, error) {
 	usbName := filepath.Base(usbPath)
 	qmiInterface := filepath.Join(usbPath, usbName+":1.4")
 	interfaceName := filepath.Base(qmiInterface)
@@ -189,18 +197,45 @@ func bindBaiwangQMIInterface(usbDriversPath, usbPath string) ([]string, error) {
 
 	actions := make([]string, 0, 2)
 	if driver != "" {
-		if err := writeSysfsValue(filepath.Join(usbDriversPath, driver, "unbind"), interfaceName); err != nil && !isNotBoundSysfsError(err) {
+		if err := opts.SysfsWrite(filepath.Join(opts.USBDriversPath, driver, "unbind"), interfaceName); err != nil && !isNotBoundSysfsError(err) {
 			return actions, fmt.Errorf("释放 interface %s 的 %s 驱动失败: %w", interfaceName, driver, err)
 		}
 		actions = append(actions, "unbind:"+driver+":"+interfaceName)
 	}
-	if err := writeSysfsValue(filepath.Join(usbDriversPath, "qmi_wwan", "bind"), interfaceName); err != nil {
-		if !isAlreadyBoundSysfsError(err) {
-			return actions, fmt.Errorf("绑定 interface %s 到 qmi_wwan 失败: %w", interfaceName, err)
-		}
+	if err := bindQMIInterfaceWithRetry(opts, qmiInterface, interfaceName); err != nil {
+		return actions, fmt.Errorf("绑定 interface %s 到 qmi_wwan 失败: %w", interfaceName, err)
 	}
 	actions = append(actions, "bind:qmi_wwan:"+interfaceName)
 	return actions, nil
+}
+
+func bindQMIInterfaceWithRetry(opts WSLUSBPrepareOptions, qmiInterface, interfaceName string) error {
+	bindPath := filepath.Join(opts.USBDriversPath, "qmi_wwan", "bind")
+	waitUntil := time.Now().Add(1200 * time.Millisecond)
+	var lastErr error
+
+	for {
+		if readUSBInterfaceDriver(qmiInterface) == "qmi_wwan" {
+			return nil
+		}
+		err := opts.SysfsWrite(bindPath, interfaceName)
+		if err == nil || isAlreadyBoundSysfsError(err) {
+			return nil
+		}
+		lastErr = err
+		if !isNotBoundSysfsError(err) || time.Now().After(waitUntil) {
+			break
+		}
+		if readUSBInterfaceDriver(qmiInterface) == "qmi_wwan" {
+			return nil
+		}
+		opts.Sleep(100 * time.Millisecond)
+	}
+
+	if readUSBInterfaceDriver(qmiInterface) == "qmi_wwan" {
+		return nil
+	}
+	return lastErr
 }
 
 func summarizePreparedBaiwangDevices(roots []string) []WSLUSBPreparedDevice {

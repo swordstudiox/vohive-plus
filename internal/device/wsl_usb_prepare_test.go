@@ -2,6 +2,7 @@ package device
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -114,6 +115,59 @@ func TestPrepareWSLUSBIsIdempotentWhenAlreadyPrepared(t *testing.T) {
 	}
 	if got := strings.TrimSpace(readUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "bind"))); got != "" {
 		t.Fatalf("qmi bind=%q, want empty for already qmi", got)
+	}
+}
+
+func TestPrepareWSLUSBRecoversWhenQMIBindReportsTransientNoSuchDevice(t *testing.T) {
+	root := t.TempDir()
+	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")
+	usbDrivers := filepath.Join(root, "sys", "bus", "usb", "drivers")
+	serialDrivers := filepath.Join(root, "sys", "bus", "usb-serial", "drivers")
+	devRoot := filepath.Join(root, "dev")
+	qmiInterface := filepath.Join(usbDevices, "1-1", "1-1:1.4")
+
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idVendor"), "2ca3\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idProduct"), "4006\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.2", "tty", "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(qmiInterface, "driver"), "option\n")
+	writeUSBPrepareFile(t, filepath.Join(qmiInterface, "usbmisc", "cdc-wdm0"), "")
+	writeUSBPrepareFile(t, filepath.Join(qmiInterface, "net", "wwan0"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "option", "unbind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"), "2ca3 4006\n")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "cdc-wdm0"), "")
+
+	qmiBindAttempts := 0
+	got, err := PrepareWSLUSB(context.Background(), WSLUSBPrepareOptions{
+		USBDevicesPath:       usbDevices,
+		USBDriversPath:       usbDrivers,
+		USBSerialDriversPath: serialDrivers,
+		DevPath:              devRoot,
+		WaitTimeout:          time.Millisecond,
+		PollInterval:         time.Millisecond,
+		Modprobe:             func(context.Context, string) error { return nil },
+		SysfsWrite: func(path, value string) error {
+			if strings.HasSuffix(path, filepath.Join("qmi_wwan", "bind")) {
+				qmiBindAttempts++
+				writeUSBPrepareFile(t, filepath.Join(qmiInterface, "driver"), "qmi_wwan\n")
+				return fmt.Errorf("write %s: no such device", path)
+			}
+			return writeSysfsValue(path, value)
+		},
+		Sleep: func(time.Duration) {},
+	})
+	if err != nil {
+		t.Fatalf("PrepareWSLUSB() error = %v", err)
+	}
+	if !got.Prepared {
+		t.Fatalf("PrepareWSLUSB() Prepared=false, got %+v", got)
+	}
+	if qmiBindAttempts != 1 {
+		t.Fatalf("qmi bind attempts=%d, want 1", qmiBindAttempts)
+	}
+	if got.Devices[0].DriverName != "qmi_wwan" {
+		t.Fatalf("DriverName=%q, want qmi_wwan", got.Devices[0].DriverName)
 	}
 }
 
