@@ -87,6 +87,30 @@ func TestPutCardPolicyEndpoint(t *testing.T) {
 	}
 }
 
+func TestPutCardPolicyAllowsClearingAPN(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	_ = db.UpsertCardPolicy(db.CardPolicy{ICCID: "8986apnclear", NetworkEnabled: true, IPVersion: "v4", APN: "ims", Source: "user"})
+
+	s := &Server{pool: device.NewPool(&config.Config{})}
+	r := gin.Default()
+	r.PUT("/api/cards/:iccid/policy", s.handlePutCardPolicy)
+
+	body := `{"apn":""}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/cards/8986apnclear/policy", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	got, _ := db.GetCardPolicy("8986apnclear")
+	if got.APN != "" {
+		t.Fatalf("APN 应允许清空以恢复自动识别: %+v", got)
+	}
+}
+
 func TestPutCardPolicyRoamingFieldPreservesWhenOmitted(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	openTestDB(t)
@@ -339,5 +363,42 @@ func TestDeviceRoamingPatchWritesPolicyAndUsesExpectedATCommand(t *testing.T) {
 	}
 	if pol.RoamingEnabled {
 		t.Fatalf("roaming_enabled 应落库为 false: %+v", pol)
+	}
+}
+
+func TestDeviceRoamingPatchDoesNotSendATWhenPolicySaveFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldDB := db.DB
+	db.DB = nil
+	t.Cleanup(func() { db.DB = oldDB })
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "wwan-roam-db-fail", Config: config.DeviceConfig{ID: "wwan-roam-db-fail", ATPort: "/dev/ttyUSB2"}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986roamdbfail")
+	injectWorker(p, w)
+
+	atCalled := false
+	oldExec := executeRoamingATForWorker
+	executeRoamingATForWorker = func(worker *device.Worker, enabled bool) (string, error) {
+		atCalled = true
+		return "OK", nil
+	}
+	t.Cleanup(func() { executeRoamingATForWorker = oldExec })
+
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/roaming", s.handleDeviceRoamingPatch)
+
+	body := `{"enabled":false}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-roam-db-fail/roaming", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if atCalled {
+		t.Fatalf("策略保存失败时不应先向硬件发送漫游 AT")
 	}
 }

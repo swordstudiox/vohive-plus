@@ -51,7 +51,6 @@ type deviceConfigDTO struct {
 	IPVersion             string  `json:"ip_version,omitempty"`
 	NetworkEnabled        bool    `json:"network_enabled"`
 	VoWiFiEnabled         bool    `json:"vowifi_enabled"`
-	RoamingEnabled        bool    `json:"roaming_enabled"`
 	DeviceBackend         string  `json:"device_backend,omitempty"`
 }
 
@@ -81,7 +80,6 @@ func deviceConfigToDTO(c config.DeviceConfig) deviceConfigDTO {
 		IPVersion:             c.IPVersion,
 		NetworkEnabled:        c.NetworkEnabled,
 		VoWiFiEnabled:         c.VoWiFiEnabled,
-		RoamingEnabled:        c.RoamingEnabled,
 		DeviceBackend:         c.DeviceBackend,
 	}
 }
@@ -137,7 +135,6 @@ func deviceConfigFromDTOWithBase(d deviceConfigDTO, base *config.DeviceConfig) c
 		IPVersion:             strings.TrimSpace(d.IPVersion),
 		NetworkEnabled:        d.NetworkEnabled,
 		VoWiFiEnabled:         d.VoWiFiEnabled,
-		RoamingEnabled:        d.RoamingEnabled,
 		DeviceBackend:         d.DeviceBackend,
 	}
 }

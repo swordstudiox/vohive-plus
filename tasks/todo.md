@@ -236,6 +236,20 @@
 - [x] 不在安装/运行阶段从 GitHub 下载源码或二进制。
 - [x] 不把 VirtualBox adapter 做成首个阻塞项，避免拖慢当前已有 WSL2 路线交付。
 - [x] 不在 Web 前端里直接执行 Windows 管理员 USB 操作。
+- [x] 用户确认：默认 `admin/admin` 和默认监听所有地址本轮以及以后都不修。
+
+### 阶段 4G：代码审查问题修复
+
+- [x] 修复卡策略面板请求竞态：切换设备/ICCID 时不展示或操作上一张卡策略。
+- [x] 修复漫游 live API 状态一致性：避免 AT 成功但数据库失败后 UI/DB/模组状态分裂。
+- [x] 修复桌面壳资源缺失静默跳过部署：发布资源不完整时给明确失败。
+- [x] 修复 Web `prepare-usb` 业务失败识别：`prepared:false` 不再继续静默发现/重扫。
+- [x] 修复策略开关错误提示和 pending 状态：异常时不永久卡住，并展示后端原因。
+- [x] 修复 `PUT /cards/:iccid/policy` 无法清空 APN。
+- [x] 修复桌面壳 WSL/usbipd 命令无超时导致 UI 卡住。
+- [x] 修复 `attach_usb` 对已 `Attached` 设备不幂等。
+- [x] 收敛 `DeviceConfigDTO.roaming_enabled` 误导性契约。
+- [x] 清理“四开关”相关注释和 Tauri schema 生成文件策略。
 
 ### 阶段 4 验证标准
 
@@ -302,4 +316,5 @@
 - 2026-08-03 阶段 4 MVP 已实施：新增 `desktop/` Tauri + Vue 桌面壳，内置 Linux 后端二进制、示例配置和 WSL USB 准备脚本；支持 WSL2/usbipd 检测、Baiwang 2ca3:4006 枚举、`bind/attach --wsl`、WSL 内 USB 准备、后端启动/停止、`/ping` 健康检查、日志 ring buffer、打开 Web UI、失败消息和管理员命令建议展示。
 - 2026-08-03 阶段 2B/4 验证：`go test ./internal/db ./internal/api ./internal/device -count=1`、`go test ./cmd/vohive -count=1`、`node node_modules/tsx/dist/cli.mjs --test tests/*.test.ts`、`npm run build`、`cargo test`、`pnpm build`、`pnpm tauri build --debug` 均已通过。本轮 Tauri debug 产物为 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe` 和 `desktop/src-tauri/target/debug/bundle/nsis/VoHive Plus_0.1.0_x64-setup.exe`。
 - 2026-08-03 阶段 4 缺陷修复：修复 Tauri debug resource path 的 Windows verbatim 前缀 `\\?\F:\...` 转 WSL 路径错误，避免部署时报 `cp: cannot stat '//?/F:/...'`；启动按钮在 `/ping` 已正常时改为幂等复用既有 WSL 后端；停止按钮改为先停止 WSL 内 `/opt/vohive/bin/vohive` 进程并避免阻塞等待 Windows `wsl.exe` 子进程；debug exe 已设置 Windows GUI 子系统，打开不再显示黑色控制台框。
+- 2026-08-03 阶段 4G 代码审查修复：用户确认默认 `admin/admin` 和默认监听所有地址本轮以及以后都不修；其余审查问题已修复，包括卡策略竞态、漫游 live API 状态一致性、APN 清空、prepare-usb 业务失败识别、策略开关错误展示、桌面壳命令超时、USB attach 幂等、资源缺失校验和 DTO 契约收敛。提交前验证：`git diff --check` 仅 CRLF 提示；`go test ./internal/api ./internal/db ./internal/device -count=1`、`node --test tests/*.test.ts`、`node node_modules/vue-tsc/bin/vue-tsc.js --noEmit`、`node node_modules/vite/bin/vite.js build`、`cargo test`、`pnpm run build` 均通过。
 - 待实施后补充：VirtualBox 路线实际体积、启动耗时、USB 稳定性。

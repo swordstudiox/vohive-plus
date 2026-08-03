@@ -143,7 +143,6 @@ export type DeviceConfigDTO = {
   qmi_proxy_path?: string
   qmi_proxy_executable?: string
   vowifi_enabled?: boolean
-  roaming_enabled?: boolean
   device_backend?: 'at' | 'qmi' | 'mbim'
   operator_selection_mode?: string
   operator_selection_plmn?: string
@@ -286,6 +285,26 @@ export type DiscoveredDevice = {
   configured_id?: string
   degraded?: boolean
   usbnet_mode?: number
+}
+
+export type PreparedUSBDevice = {
+  usb_path: string
+  vendor_id: string
+  product_id: string
+  control_path?: string
+  net_interface?: string
+  at_ports?: string[]
+  qmi_interface?: string
+  driver_name?: string
+}
+
+export type PrepareUSBResponse = {
+  status: 'ok' | 'error'
+  message: string
+  supported_device_found: boolean
+  prepared: boolean
+  actions?: string[]
+  devices?: PreparedUSBDevice[]
 }
 
 export type DashboardDevice = {

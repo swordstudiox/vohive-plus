@@ -80,6 +80,7 @@ const rescanning = ref(false)
 
 // 卡策略（跟当前选中设备的 ICCID 绑定）
 const cardPolicy = ref<CardPolicy | null>(null)
+const cardPolicyRequestSeq = ref(0)
 
 const trafficSpeedRx = ref('')
 const trafficSpeedTx = ref('')
@@ -589,13 +590,21 @@ watch(
   { deep: true }
 )
 
+function samePolicyICCID(a: string | undefined, b: string | undefined) {
+  const normalize = (v: string | undefined) => String(v || '').trim().replace(/^"|"$/g, '').replace(/[Ff]+$/g, '')
+  return normalize(a) !== '' && normalize(a) === normalize(b)
+}
+
 async function fetchCardPolicy(iccid: string | undefined) {
+  const requestSeq = ++cardPolicyRequestSeq.value
   if (!iccid) {
     cardPolicy.value = null
     return
   }
+  cardPolicy.value = null
   const result = await cardsService.getPolicy(iccid)
-  if (result.ok) {
+  if (requestSeq !== cardPolicyRequestSeq.value) return
+  if (result.ok && samePolicyICCID(result.data.iccid, iccid)) {
     cardPolicy.value = result.data
   }
 }

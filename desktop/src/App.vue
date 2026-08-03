@@ -7,6 +7,7 @@ const status = ref<RuntimeStatus | null>(null)
 const logs = ref<string[]>([])
 const busy = ref('')
 const error = ref('')
+const notice = ref('')
 const suggestedAdminCommand = ref('')
 
 const targetDevice = computed(() => status.value?.devices.find((d) => d.is_target))
@@ -15,6 +16,7 @@ const healthText = computed(() => status.value?.health.ok ? '正常' : status.va
 async function refresh(clearNotice = true) {
   if (clearNotice) {
     error.value = ''
+    notice.value = ''
     suggestedAdminCommand.value = ''
   }
   status.value = await runtimeService.status()
@@ -24,12 +26,15 @@ async function refresh(clearNotice = true) {
 async function runAction(name: string, fn: () => Promise<ActionResult>) {
   busy.value = name
   error.value = ''
+  notice.value = ''
   suggestedAdminCommand.value = ''
   try {
     const result = await fn()
     if (!result.ok) {
       error.value = result.message
       suggestedAdminCommand.value = result.suggested_admin_command || ''
+    } else {
+      notice.value = result.message
     }
     if (result.status) {
       status.value = result.status
@@ -89,6 +94,7 @@ onMounted(() => refresh())
     </section>
 
     <p v-if="busy" class="busy">正在执行：{{ busy }}</p>
+    <p v-if="notice" class="notice">{{ notice }}</p>
     <p v-if="error" class="error">{{ error }}</p>
     <pre v-if="suggestedAdminCommand" class="command">{{ suggestedAdminCommand }}</pre>
 

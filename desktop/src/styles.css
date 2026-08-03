@@ -94,6 +94,11 @@ h2 {
   color: #2563eb;
 }
 
+.notice {
+  margin-top: 14px;
+  color: #047857;
+}
+
 .error {
   margin-top: 14px;
   color: #b91c1c;

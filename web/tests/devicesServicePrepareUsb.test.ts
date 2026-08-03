@@ -8,7 +8,9 @@ const source = await readFile(
 )
 
 test('devices service exposes prepareUSB API call', () => {
-  assert.match(source, /prepareUSB\(\)\s*\{\s*return callService\(async \(\) => \{\s*const res = await api\.post\('\/devices\/actions\/prepare-usb'\)/s)
+  assert.match(source, /PrepareUSBResponse/)
+  assert.match(source, /prepareUSB\(\)\s*\{\s*return callService\(async \(\) => \{\s*const res = await api\.post<PrepareUSBResponse>\('\/devices\/actions\/prepare-usb'\)/s)
+  assert.match(source, /if \(!data\?\.prepared\)/)
 })
 
 test('listDiscovered prepares WSL USB before discovery request', () => {

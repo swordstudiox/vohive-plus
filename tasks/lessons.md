@@ -20,14 +20,19 @@
 
 - GORM 布尔字段如果需要让用户显式写入 `false`，不要依赖 `gorm:"default:true"` 这类默认标签；应在策略创建/迁移层显式处理默认值，否则容易把“用户关闭”吞成默认开启。
 - `card_policies` 这种按 ICCID 生效的策略字段，新增能力时要同时检查默认策略、旧库迁移、API PATCH/PUT 的“未传字段不覆盖”语义，以及设备上线后的策略投影。
+- 对硬件即时生效的 live API 不要先发 AT 再落库；应先保存用户意图，保存失败就不碰硬件，硬件应用失败时再按旧策略回滚或明确暴露分裂状态。
+- 前端设备/卡详情请求必须防旧响应覆盖；切换设备或 ICCID 时先清空旧状态，再用请求序号和 ICCID 归一比较确认响应仍属于当前对象。
 - Windows Node 不能可靠复用 WSL Linux 的 `node_modules`；Web 测试和构建应明确使用 WSL 内 Linux Node，并把 `.toolchains/node/bin` 放到 `PATH` 最前。
+- 不要并行对同一个 `node_modules` 目录跑多个 `pnpm` 命令；pnpm 可能把“不同包管理器安装”的依赖移动到 `.ignored`，导致本轮测试 runner 丢失。
 - 在 WSL `/mnt/f` 上跑主 Web `npm run build` 可能超过 3 分钟，超时不等于构建失败；遇到无输出超时要先检查残留 `node/vite` 进程和 `dist` 更新时间，再决定是否重跑或清理。
 - Tauri 桌面命令返回 `ActionResult { ok:false }` 后，前端必须显式展示 `message` 和 `suggested_admin_command`；只等待 Promise resolve 会把失败路径吞掉。
 - 桌面壳持有 `Child` 句柄不代表后端仍在运行；状态刷新应使用 `try_wait()` 更新退出状态并释放句柄，否则后端异常退出后 UI 会误报运行中。
+- WSL/usbipd 这类外部命令必须带超时，并把超时错误展示给桌面 UI；否则 Windows 服务、WSL 发行版或 USB 栈卡住时，用户只会看到按钮一直 busy。
 - Tauri Windows 构建要求存在 `.ico` 图标资源；即使是 MVP，也要先准备 `src-tauri/icons/icon.ico`，否则安装包构建会卡在资源校验。
 - Tauri/Rust 在 Windows debug 运行时可能返回 `\\?\F:\...` 这种 verbatim path；转换给 WSL 使用前必须剥掉 `\\?\` 前缀，否则 Linux 会看到不存在的 `//?/F:/...`。
 - 桌面启动按钮必须先看健康检查，`/ping` 已正常时应复用既有后端；否则用户从外部启动过 WSL 后端时，桌面壳会误以为“进程未运行”并尝试启动第二个实例。
 - Windows GUI 程序如果直接打开出现黑框，检查 PE subsystem；Rust/Tauri 入口可用 `#![cfg_attr(windows, windows_subsystem = "windows")]` 隐藏 console。
+- Windows 上如果 `npm.ps1` 指向 `C:\Users\<用户>\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js` 且目标不存在，不要继续用坏 shim；可直接调用 Node 安装目录自带的 `node_modules\npm\bin\npm-cli.js`，并用项目内 cache 避免用户级 npm cache 权限问题。
 
 ## 2026-08-03 Git 提交规范
 

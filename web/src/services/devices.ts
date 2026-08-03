@@ -1,6 +1,6 @@
 import { api } from '../stores/auth'
 import { callService } from './http'
-import type { CarrierWebsheetInfo, DeviceConfigDTO, DiscoveredDevice, EsimNotificationItem, EsimOverviewResponse, EsimSpaceDelta } from '../types/api'
+import type { CarrierWebsheetInfo, DeviceConfigDTO, DiscoveredDevice, EsimNotificationItem, EsimOverviewResponse, EsimSpaceDelta, PrepareUSBResponse } from '../types/api'
 import type { DeviceDetailVM, DeviceListVM } from '../types/view-model'
 import axios from 'axios'
 
@@ -124,8 +124,12 @@ export const devicesService = {
   },
   prepareUSB() {
     return callService(async () => {
-      const res = await api.post('/devices/actions/prepare-usb')
-      return res.data
+      const res = await api.post<PrepareUSBResponse>('/devices/actions/prepare-usb')
+      const data = res.data
+      if (!data?.prepared) {
+        throw new Error(data?.message || 'WSL USB 尚未准备完成')
+      }
+      return data
     })
   },
   listDiscovered() {

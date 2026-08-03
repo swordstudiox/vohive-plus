@@ -117,16 +117,33 @@ func (s *Server) handleDeviceRoamingPatch(c *gin.Context) {
 		return
 	}
 
+	iccid := strings.TrimSpace(worker.CurrentICCID())
+	var previousPolicy *db.CardPolicy
+	if iccid != "" {
+		pol, err := db.ResolveCardPolicy(iccid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "获取卡策略失败: " + err.Error()})
+			return
+		}
+		previous := pol
+		pol.RoamingEnabled = *req.Enabled
+		pol.Source = "user"
+		if err := db.UpsertCardPolicy(pol); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "保存卡策略失败: " + err.Error()})
+			return
+		}
+		previousPolicy = &previous
+	}
+
 	resp, err := executeRoamingATForWorker(worker, *req.Enabled)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "切换漫游策略失败: " + err.Error()})
-		return
-	}
-	iccid, _, err := s.patchCardPolicyForDevice(deviceID, func(p *db.CardPolicy) {
-		p.RoamingEnabled = *req.Enabled
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+		message := "切换漫游策略失败: " + err.Error()
+		if previousPolicy != nil {
+			if rollbackErr := db.UpsertCardPolicy(*previousPolicy); rollbackErr != nil {
+				message += "；回滚卡策略失败: " + rollbackErr.Error()
+			}
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": message})
 		return
 	}
 	if iccid != "" {

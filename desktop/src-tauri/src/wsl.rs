@@ -1,7 +1,8 @@
 use std::path::Path;
+use std::time::Duration;
 
 use crate::models::ToolStatus;
-use crate::process::{clean_output, run_output};
+use crate::process::{clean_output, run_output, run_output_with_timeout};
 
 const DEFAULT_WSL: &str = r"C:\Windows\System32\wsl.exe";
 pub const DISTRO: &str = "Ubuntu-24.04";
@@ -35,13 +36,24 @@ pub fn detect_wsl() -> ToolStatus {
 }
 
 pub fn run_root(args: &[&str]) -> std::io::Result<std::process::Output> {
+    run_root_timeout(args, Duration::from_secs(60))
+}
+
+pub fn run_root_timeout(args: &[&str], timeout: Duration) -> std::io::Result<std::process::Output> {
     let mut full = vec!["-d", DISTRO, "-u", "root"];
     full.extend_from_slice(args);
-    run_output(DEFAULT_WSL, &full)
+    run_output_with_timeout(DEFAULT_WSL, &full, timeout)
 }
 
 pub fn run_root_shell(script: &str) -> std::io::Result<std::process::Output> {
     run_root(&["--exec", "/bin/sh", "-lc", script])
+}
+
+pub fn run_root_shell_timeout(
+    script: &str,
+    timeout: Duration,
+) -> std::io::Result<std::process::Output> {
+    run_root_timeout(&["--exec", "/bin/sh", "-lc", script], timeout)
 }
 
 pub fn windows_path_to_wsl(path: &Path) -> String {
@@ -78,7 +90,9 @@ mod tests {
 
     #[test]
     fn converts_windows_verbatim_path_to_wsl_mount_path() {
-        let p = PathBuf::from(r"\\?\F:\mySoftwareTools\vohive-plus\desktop\src-tauri\target\debug\resources\vohive\vohive-open_linux_amd64");
+        let p = PathBuf::from(
+            r"\\?\F:\mySoftwareTools\vohive-plus\desktop\src-tauri\target\debug\resources\vohive\vohive-open_linux_amd64",
+        );
         assert_eq!(
             windows_path_to_wsl(&p),
             "/mnt/f/mySoftwareTools/vohive-plus/desktop/src-tauri/target/debug/resources/vohive/vohive-open_linux_amd64"

@@ -4,7 +4,7 @@ import { Loading } from '@element-plus/icons-vue'
 import type { CardPolicy } from '../types/api'
 import { cardsService } from '../services/cards'
 import { devicesService } from '../services/devices'
-import { useCardPolicyToggles, type PolicyMirror } from '../composables/useCardPolicyToggles'
+import { useCardPolicyToggles, type PolicyMirror, type ToggleResult } from '../composables/useCardPolicyToggles'
 
 const props = defineProps<{
   deviceId: string
@@ -57,15 +57,15 @@ async function loadPolicy() {
 
 onMounted(loadPolicy)
 
-// stored 执行器：PUT 互斥后的完整三元组
-async function putTriple(next: PolicyMirror): Promise<{ ok: boolean }> {
+// stored 执行器：PUT 互斥后的完整开关镜像
+async function putTriple(next: PolicyMirror): Promise<ToggleResult> {
   const r = await cardsService.putPolicy(props.iccid, {
     network_enabled: next.network_enabled,
     vowifi_enabled: next.vowifi_enabled,
     airplane_enabled: next.airplane_enabled,
     roaming_enabled: next.roaming_enabled
   })
-  return { ok: r.ok }
+  return { ok: r.ok, message: r.ok ? undefined : r.error.message }
 }
 
 const {
@@ -78,6 +78,10 @@ const {
   airplaneFailed,
   roamingPending,
   roamingFailed,
+  networkError,
+  vowifiError,
+  airplaneError,
+  roamingError,
   onNetworkToggle,
   onVoWiFiToggle,
   onAirplaneToggle,
@@ -91,24 +95,24 @@ const {
           apn: policy.value?.apn || ''
         })
       : await devicesService.stopNetwork(props.deviceId)
-    return { ok: r.ok }
+    return { ok: r.ok, message: r.ok ? undefined : r.error.message }
   },
   async applyVoWiFi(enabled, next) {
     if (mode.value === 'stored') return putTriple(next)
     const r = enabled
       ? await devicesService.enableVoWiFi(props.deviceId)
       : await devicesService.disableVoWiFi(props.deviceId)
-    return { ok: r.ok }
+    return { ok: r.ok, message: r.ok ? undefined : r.error.message }
   },
   async applyAirplane(enabled, next) {
     if (mode.value === 'stored') return putTriple(next)
     const r = await devicesService.setFlightMode(props.deviceId, enabled)
-    return { ok: r.ok }
+    return { ok: r.ok, message: r.ok ? undefined : r.error.message }
   },
   async applyRoaming(enabled, next) {
     if (mode.value === 'stored') return putTriple(next)
     const r = await devicesService.setRoaming(props.deviceId, enabled)
-    return { ok: r.ok }
+    return { ok: r.ok, message: r.ok ? undefined : r.error.message }
   },
   onChanged() {
     emit('policyChanged')
@@ -132,7 +136,7 @@ const {
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
           <span class="text-sm text-gray-700 dark:text-gray-200">网络</span>
           <div class="flex items-center gap-2">
-            <span v-if="networkFailed" class="text-xs text-orange-500">未生效</span>
+            <span v-if="networkFailed" class="text-xs text-orange-500">{{ networkError }}</span>
             <el-icon v-if="networkPending" class="animate-spin text-gray-400"><Loading /></el-icon>
             <el-switch
               v-model="local.network_enabled"
@@ -145,7 +149,7 @@ const {
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
           <span class="text-sm text-gray-700 dark:text-gray-200">VoWiFi</span>
           <div class="flex items-center gap-2">
-            <span v-if="vowifiFailed" class="text-xs text-orange-500">未生效</span>
+            <span v-if="vowifiFailed" class="text-xs text-orange-500">{{ vowifiError }}</span>
             <el-icon v-if="vowifiPending" class="animate-spin text-gray-400"><Loading /></el-icon>
             <el-switch
               v-model="local.vowifi_enabled"
@@ -158,7 +162,7 @@ const {
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
           <span class="text-sm text-gray-700 dark:text-gray-200">飞行</span>
           <div class="flex items-center gap-2">
-            <span v-if="airplaneFailed" class="text-xs text-orange-500">未生效</span>
+            <span v-if="airplaneFailed" class="text-xs text-orange-500">{{ airplaneError }}</span>
             <el-icon v-if="airplanePending" class="animate-spin text-gray-400"><Loading /></el-icon>
             <el-switch
               v-model="local.airplane_enabled"
@@ -171,7 +175,7 @@ const {
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
           <span class="text-sm text-gray-700 dark:text-gray-200">允许漫游</span>
           <div class="flex items-center gap-2">
-            <span v-if="roamingFailed" class="text-xs text-orange-500">未生效</span>
+            <span v-if="roamingFailed" class="text-xs text-orange-500">{{ roamingError }}</span>
             <el-icon v-if="roamingPending" class="animate-spin text-gray-400"><Loading /></el-icon>
             <el-switch
               v-model="local.roaming_enabled"

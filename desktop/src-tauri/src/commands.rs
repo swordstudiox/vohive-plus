@@ -1,12 +1,14 @@
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::process::Stdio;
 use std::thread;
+use std::time::Duration;
 
 use tauri::{AppHandle, Manager, State};
 
 use crate::health::{check_health, WEB_URL};
 use crate::logs::RingLog;
-use crate::models::{ActionResult, BackendStatus, RuntimeStatus};
+use crate::models::{ActionResult, BackendStatus, RuntimeStatus, UsbDevice};
 use crate::process::{clean_output, hidden_command, run_output};
 use crate::{usbipd, wsl, AppState};
 
@@ -31,27 +33,33 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
         return action(false, "未发现 2ca3:4006 Baiwang", None, None);
     };
 
-    if target.state == "Not shared" {
-        match run_output(&path, &["bind", "--busid", &target.busid]) {
-            Ok(out) if out.status.success() => {}
-            Ok(out) => {
-                let msg = clean_output(&out.stderr);
-                return action(
-                    false,
-                    format!("usbipd bind 失败: {msg}"),
-                    None,
-                    Some(format!("\"{path}\" bind --busid {}", target.busid)),
-                );
-            }
-            Err(err) => {
-                return action(
-                    false,
-                    format!("usbipd bind 执行失败: {err}"),
-                    None,
-                    Some(format!("\"{path}\" bind --busid {}", target.busid)),
-                );
+    match usb_attach_step(target) {
+        UsbAttachStep::AlreadyAttached => {
+            return action(true, "USB 已连接到 WSL", Some(build_status(&state)), None);
+        }
+        UsbAttachStep::BindThenAttach => {
+            match run_output(&path, &["bind", "--busid", &target.busid]) {
+                Ok(out) if out.status.success() => {}
+                Ok(out) => {
+                    let msg = clean_output(&out.stderr);
+                    return action(
+                        false,
+                        format!("usbipd bind 失败: {msg}"),
+                        None,
+                        Some(format!("\"{path}\" bind --busid {}", target.busid)),
+                    );
+                }
+                Err(err) => {
+                    return action(
+                        false,
+                        format!("usbipd bind 执行失败: {err}"),
+                        None,
+                        Some(format!("\"{path}\" bind --busid {}", target.busid)),
+                    );
+                }
             }
         }
+        UsbAttachStep::AttachOnly => {}
     }
 
     let attach = run_output(&path, &["attach", "--wsl", "--busid", &target.busid]);
@@ -131,7 +139,7 @@ pub fn start_backend(app: AppHandle, state: State<'_, AppState>) -> ActionResult
 
 #[tauri::command]
 pub fn stop_backend(state: State<'_, AppState>) -> ActionResult {
-    let stop_result = wsl::run_root_shell(backend_stop_script());
+    let stop_result = wsl::run_root_shell_timeout(backend_stop_script(), Duration::from_secs(8));
 
     let mut guard = state.backend.lock().expect("backend mutex poisoned");
     if let Some(mut child) = guard.take() {
@@ -246,12 +254,7 @@ fn install_or_import(app: &AppHandle, state: &State<'_, AppState>) -> Result<(),
     let bin = resource_dir.join("resources/vohive/vohive-open_linux_amd64");
     let cfg = resource_dir.join("resources/vohive/config.example.yaml");
     let script = resource_dir.join("resources/vohive/vohive-usb-prepare.sh");
-    if !bin.exists() || !cfg.exists() || !script.exists() {
-        state
-            .logs
-            .push("桌面壳资源不完整，跳过自动部署，假定 /opt/vohive 已准备");
-        return Ok(());
-    }
+    validate_vohive_resources(&bin, &cfg, &script)?;
     let bin_wsl = wsl::sh_quote(&wsl::windows_path_to_wsl(&bin));
     let cfg_wsl = wsl::sh_quote(&wsl::windows_path_to_wsl(&cfg));
     let script_wsl = wsl::sh_quote(&wsl::windows_path_to_wsl(&script));
@@ -269,6 +272,38 @@ fn install_or_import(app: &AppHandle, state: &State<'_, AppState>) -> Result<(),
         }
         Ok(out) => Err(format!("部署 WSL 资源失败: {}", clean_output(&out.stderr))),
         Err(err) => Err(err.to_string()),
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum UsbAttachStep {
+    AlreadyAttached,
+    BindThenAttach,
+    AttachOnly,
+}
+
+fn usb_attach_step(target: &UsbDevice) -> UsbAttachStep {
+    match target.state.as_str() {
+        "Attached" => UsbAttachStep::AlreadyAttached,
+        "Not shared" => UsbAttachStep::BindThenAttach,
+        _ => UsbAttachStep::AttachOnly,
+    }
+}
+
+fn validate_vohive_resources(bin: &Path, cfg: &Path, script: &Path) -> Result<(), String> {
+    let missing = [
+        ("vohive-open_linux_amd64", bin),
+        ("config.example.yaml", cfg),
+        ("vohive-usb-prepare.sh", script),
+    ]
+    .into_iter()
+    .filter_map(|(name, path)| (!path.exists()).then_some(name))
+    .collect::<Vec<_>>();
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("桌面壳资源不完整，缺少: {}", missing.join(", ")))
     }
 }
 
@@ -324,12 +359,47 @@ echo killed"#
 
 #[cfg(test)]
 mod tests {
-    use super::backend_stop_script;
+    use super::{backend_stop_script, usb_attach_step, validate_vohive_resources, UsbAttachStep};
+    use crate::models::UsbDevice;
+    use std::fs;
 
     #[test]
     fn backend_stop_script_targets_only_opt_vohive_processes() {
         let script = backend_stop_script();
         assert!(script.contains("pgrep -f '^/opt/vohive/bin/vohive( |$)'"));
         assert!(!script.contains("pkill -f"));
+    }
+
+    #[test]
+    fn usb_attach_step_is_idempotent_for_attached_target() {
+        let target = UsbDevice {
+            busid: "2-1".to_string(),
+            vid_pid: "2ca3:4006".to_string(),
+            device: "Baiwang".to_string(),
+            state: "Attached".to_string(),
+            is_target: true,
+        };
+
+        assert_eq!(usb_attach_step(&target), UsbAttachStep::AlreadyAttached);
+    }
+
+    #[test]
+    fn validate_vohive_resources_rejects_missing_files() {
+        let dir =
+            std::env::temp_dir().join(format!("vohive-plus-resource-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("vohive-open_linux_amd64");
+        let cfg = dir.join("config.example.yaml");
+        let script = dir.join("vohive-usb-prepare.sh");
+
+        let err = validate_vohive_resources(&bin, &cfg, &script)
+            .expect_err("missing resources must fail");
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(err.contains("桌面壳资源不完整"));
+        assert!(err.contains("vohive-open_linux_amd64"));
+        assert!(err.contains("config.example.yaml"));
+        assert!(err.contains("vohive-usb-prepare.sh"));
     }
 }
