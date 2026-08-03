@@ -24,8 +24,7 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["nsis"],
+    "active": false,
     "resources": ["resources/vohive/*"]
   }
 }

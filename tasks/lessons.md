@@ -28,13 +28,14 @@
 - Tauri 桌面命令返回 `ActionResult { ok:false }` 后，前端必须显式展示 `message` 和 `suggested_admin_command`；只等待 Promise resolve 会把失败路径吞掉。
 - 桌面壳持有 `Child` 句柄不代表后端仍在运行；状态刷新应使用 `try_wait()` 更新退出状态并释放句柄，否则后端异常退出后 UI 会误报运行中。
 - WSL/usbipd 这类外部命令必须带超时，并把超时错误展示给桌面 UI；否则 Windows 服务、WSL 发行版或 USB 栈卡住时，用户只会看到按钮一直 busy。
-- Tauri Windows 构建要求存在 `.ico` 图标资源；即使是 MVP，也要先准备 `src-tauri/icons/icon.ico`，否则安装包构建会卡在资源校验。
+- Tauri Windows 应用构建要求存在 `.ico` 图标资源；即使是 MVP，也要先准备 `src-tauri/icons/icon.ico`，否则构建会卡在资源校验。
 - Tauri/Rust 在 Windows debug 运行时可能返回 `\\?\F:\...` 这种 verbatim path；转换给 WSL 使用前必须剥掉 `\\?\` 前缀，否则 Linux 会看到不存在的 `//?/F:/...`。
 - 桌面启动按钮必须先看健康检查，`/ping` 已正常时应复用既有后端；否则用户从外部启动过 WSL 后端时，桌面壳会误以为“进程未运行”并尝试启动第二个实例。
 - Windows GUI 程序如果直接打开出现黑框，检查 PE subsystem；Rust/Tauri 入口可用 `#![cfg_attr(windows, windows_subsystem = "windows")]` 隐藏 console。
 - Windows 上如果 `npm.ps1` 指向 `C:\Users\<用户>\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js` 且目标不存在，不要继续用坏 shim；可直接调用 Node 安装目录自带的 `node_modules\npm\bin\npm-cli.js`，并用项目内 cache 避免用户级 npm cache 权限问题。
 - `usbipd attach --wsl` 不能假设 WSL2 会自动启动；桌面壳应提供显式“启动 WSL”按钮，`连接 USB 到 WSL` 只做运行状态检查和提示，不要擅自启动 WSL。
 - WSL/USB-IP 下从 `option` 切换 `qmi_wwan` 时，`unbind` 后立即写 `qmi_wwan/bind` 可能短暂返回 `no such device`；应短轮询重试并复查 interface driver，避免把内核异步绑定误报为失败。
+- 如果 Windows 桌面安装包不能安装/配置 WSL2，也不能安装 `usbipd-win`，它就不要作为交付目标；优先保留可直接运行的桌面 exe 和后续便携包策略，避免生成误导性的 setup.exe。
 
 ## 2026-08-03 Git 提交规范
 

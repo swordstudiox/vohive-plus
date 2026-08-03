@@ -266,7 +266,7 @@
 - [x] 桌面壳新增 `start_wsl` 命令，启动隐藏 keepalive WSL 进程并等待目标发行版 Running。
 - [x] `attach_usb` 在执行 `usbipd attach` 前自动调用 WSL 保活，避免用户必须手工开 WSL 终端。
 - [x] UI 在运行环境卡片提供“启动 WSL”按钮，并复用现有提示/状态刷新链路。
-- [x] 重新验证、重编译桌面 debug exe 和安装包，并提交本地 git。
+- [x] 重新验证、重编译桌面 debug exe；当时曾生成 NSIS 安装包，阶段 4J 后已取消安装包构建。
 
 ### 阶段 4I：WSL 手动启动边界与 USB 准备重试
 
@@ -282,7 +282,23 @@
 - [x] 新增 RED 测试：`qmi_wwan/bind` 首次返回 `no such device` 后，短暂重试/复查 driver，最终已绑定时不失败。
 - [x] `attach_usb` 改为检查目标 WSL2 发行版是否 Running；未 Running 时返回提示和保活命令建议，不调用 `ensure_wsl_running`。
 - [x] `PrepareWSLUSB` 增加可测试的 sysfs 写入/等待注入点，并对 qmi bind 瞬时失败做短轮询。
-- [x] 重新验证、重编译桌面 debug exe 和安装包，并提交本地 git。
+- [x] 重新验证、重编译桌面 debug exe；当时曾生成 NSIS 安装包，阶段 4J 后已取消安装包构建。
+
+### 阶段 4J：取消 NSIS 安装包构建
+
+### 根因
+
+- [x] 当前 NSIS 安装包只封装桌面壳和资源，不会自动安装/配置 WSL2。
+- [x] 当前 NSIS 安装包不会自动安装 `usbipd-win`。
+- [x] 在这些前置能力仍需用户手动准备的情况下，安装包和 `vohive-plus-desktop.exe` 的功能边界基本一致，继续生成安装包会增加误导和维护成本。
+
+### 修复计划
+
+- [x] Tauri 配置禁用 bundler，不再生成 NSIS 安装包。
+- [x] 保留 `resources/vohive/*` 资源声明，确保单 exe 构建仍携带后端二进制、默认配置和 USB 准备脚本。
+- [x] 新增桌面配置测试，防止后续重新启用 `nsis` target。
+- [x] 删除本地旧 NSIS debug 输出目录，避免误用过期安装包。
+- [x] 后续阶段 5 改为便携包/离线运行策略，不再规划标准安装包。
 
 ### 阶段 4 验证标准
 
@@ -293,16 +309,14 @@
 - [x] 后端异常退出时，桌面壳能显示失败原因并允许重新启动。
 - [x] 端口 `7575` 被占用时，桌面壳能给出明确诊断，不静默失败。
 
-## 阶段 5：打包与离线安装
+## 阶段 5：便携包与离线运行
 
 - [ ] 构建阶段联网拉取 Go/npm 依赖。
-- [ ] 安装包内置已编译的 `vohive` 二进制、默认配置、启动脚本。
-- [ ] WSL2 路线安装包不在安装时下载 `vohive`。
-- [ ] VirtualBox 路线安装包不在安装时下载 `vohive`。
+- [ ] 便携包内置已编译的 `vohive` 二进制、默认配置、启动脚本。
+- [ ] WSL2 路线便携包不在运行时下载 `vohive`。
+- [ ] VirtualBox 路线便携包不在运行时下载 `vohive`。
 - [ ] 明确 VirtualBox 本体是否内置、提示用户安装，或作为外部前置依赖。
-- [ ] 输出标准安装包和便携包策略：
-  - 标准安装包：适合首次安装。
-  - 便携包：适合已有 WSL2 或已有 VirtualBox 的用户。
+- [ ] 输出便携包策略，优先面向已有 WSL2 或已有 VirtualBox 的用户。
 
 ## 验证清单
 
@@ -353,4 +367,5 @@
 - 2026-08-03 产物重编译：已重新执行 Web build 并同步到 `internal/web/dist`；已在 WSL2 中重新编译 Linux amd64 后端二进制 `dist/vohive-open_linux_amd64`，并覆盖桌面壳内置资源 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`；已执行 `pnpm tauri build --debug` 重新生成 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe` 和 NSIS debug 安装包。
 - 2026-08-03 阶段 4H 修复：截图中的 `usbipd: error: There is no WSL 2 distribution running` 根因已修复；桌面壳新增“启动 WSL”按钮，`attach_usb` 在执行 `usbipd attach --wsl` 前会自动启动并保活 `Ubuntu-24.04`，不再要求用户手动打开 WSL 终端。验证：新增 RED 测试后确认失败；实现后 `cargo test` 13 项通过、`node --test tests/*.test.mjs` 2 项通过、`pnpm run build` 通过、`pnpm tauri build --debug` 通过。
 - 2026-08-03 阶段 4I 修正：用户确认 `连接 USB 到 WSL` 不应自动启动 WSL；已改为仅检查 `Ubuntu-24.04` 是否 Running，未运行时提示先点“启动 WSL”。`PrepareWSLUSB` 对 `qmi_wwan/bind` 瞬时 `no such device` 增加重试和 driver 复查；新后端实机 `--prepare-usb` 返回 `prepared=true`，设备为 `/dev/cdc-wdm0` + `wwan0` + `/dev/ttyUSB0-3`。验证：RED 测试确认失败后修复，`go test ./internal/api ./internal/db ./internal/device -count=1`、`cargo test`、`node --test tests/*.test.mjs`、`pnpm run build`、`pnpm tauri build --debug` 均通过。
+- 2026-08-03 阶段 4J 决策：用户确认当前安装包不安装/配置 WSL2，也不安装 `usbipd-win`，功能上与桌面壳 exe 基本一致，因此取消 NSIS 安装包构建；后续只保留桌面 exe 与便携包路线。
 - 待实施后补充：VirtualBox 路线实际体积、启动耗时、USB 稳定性。
