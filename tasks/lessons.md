@@ -99,3 +99,9 @@
 
 - Fork 成独立项目后，不能保留旧上游的容器发布 workflow 和旧镜像名；如果当前项目不发布容器镜像，就删除容器发布/构建 workflow，而不是要求用户去补旧仓库的容器仓库密钥。
 - 对 GitHub Actions 报 `Username and password required` 这类登录失败，先检查 workflow 是否仍在引用旧容器仓库账号、密钥、旧镜像名或登录 action，不要直接把“补账号密码”当成默认修复。
+
+## 2026-08-04 桌面便携包外部依赖说明
+
+- `usbipd-win` 是系统级 USB/IP 驱动和 Windows 服务，不应随项目便携包私自内置或分发过期安装包；README 应提供官方项目和 Release 链接，让用户从官方渠道安装。
+- Tauri 便携 exe 仍依赖 Windows WebView2 Runtime。即使大多数 Windows 10/11 已内置，也应在普通用户环境要求里说明精简系统需要手动安装。
+- 首次安装 WSL 发行版后需要先完成 Linux 用户初始化；仅执行 `wsl --install` 不代表发行版已可被桌面壳直接使用。

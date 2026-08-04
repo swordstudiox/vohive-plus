@@ -53,12 +53,13 @@ VoHive 面向高通 4G/LTE/5G 模组，例如 Quectel EC20、EC25、EC21、EG25�
 ### 环境要求
 
 - Windows 10/11 x64。
-- 已启用虚拟化和 WSL2，推荐发行版 `Ubuntu-24.04`。
-- 已安装 `usbipd-win`。
+- 已启用虚拟化和 WSL2，推荐发行版 `Ubuntu-24.04`。安装说明见 [Microsoft WSL 文档](https://learn.microsoft.com/windows/wsl/install)。
+- 已安装 `usbipd-win`。项目主页见 [dorssel/usbipd-win](https://github.com/dorssel/usbipd-win)，安装包见 [usbipd-win Releases](https://github.com/dorssel/usbipd-win/releases)。
+- 已安装 Microsoft Edge WebView2 Runtime。Windows 11 和多数 Windows 10 通常已内置；精简系统可从 [Microsoft WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) 安装 Evergreen Runtime。
 - 大疆 4G 模块或 Windows 侧枚举为 `2ca3:4006 Baiwang` 的设备。
 - 可传输数据的 USB 线和可用 SIM 卡。
 
-桌面便携包不会安装或配置 WSL2，也不会安装 `usbipd-win`。这些属于运行前置环境，需要用户先准备好。
+桌面便携包不会安装或配置 WSL2，也不会下载、内置或安装 `usbipd-win`。这些属于系统级运行前置环境，需要用户先准备好。普通用户无需安装 Go、Node、Rust、pnpm、Docker 或 VirtualBox。
 
 可参考命令：
 
@@ -67,7 +68,9 @@ wsl --install -d Ubuntu-24.04
 winget install dorssel.usbipd-win
 ```
 
-`usbipd bind` 可能需要管理员权限。如果桌面壳提示需要管理员命令，请用管理员 PowerShell 执行界面给出的命令。
+首次安装 WSL 发行版后，请先启动一次 `Ubuntu-24.04` 完成 Linux 用户初始化。如果 USB attach 或 WSL 驱动模块异常，可先执行 `wsl --update` 更新 WSL 内核后重试。
+
+`usbipd-win` 是系统级 USB/IP 驱动和 Windows 服务，安装/更新需要管理员权限；本项目不保存它的安装包，避免分发过期驱动。`usbipd bind` 也可能需要管理员权限。如果桌面壳提示需要管理员命令，请用管理员 PowerShell 执行界面给出的命令。
 
 ### 下载与启动
 
@@ -198,7 +201,7 @@ GitHub Actions 会构建后端多架构运行时、Windows 桌面便携包，并
 
 - WSL2 是当前可运行主路线。
 - VirtualBox Headless + 最小 Debian 是后续方向，当前 Release 不包含 VM 镜像。
-- 桌面壳不会自动安装 WSL2 或 usbipd-win。
+- 桌面壳不会自动安装 WSL2、usbipd-win 或 WebView2 Runtime。
 - 默认账号 `admin/admin` 和默认监听所有地址是当前版本保留行为。
 - 当前 GitHub Actions 不构建或上传容器镜像。
 - 请自行确认所在地区法律法规、运营商服务条款和硬件使用风险。

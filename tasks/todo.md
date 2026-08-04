@@ -668,3 +668,23 @@
 
 - 2026-08-04 阶段 6B README/Actions 修复：已将 `windloom/vohive-open` 原 README 中的项目定位、核心特性、典型应用场景、技术栈、免责声明和许可证信息合并到 `README.md`，并在顶部明确写明本项目已从 `windloom/vohive-open` fork 为 `swordstudiox/vohive-plus`。按用户要求删除容器发布路线，不再保留旧容器镜像名或容器仓库使用说明；已删除容器发布/构建 workflow，避免 Actions 继续请求容器仓库账号密码。新增 `tests/repositoryDocs.test.mjs` 防止 README fork 声明缺失和容器发布 workflow 回流。验证：`node --test tests/*.test.mjs` 与 `desktop` 下 `node --test tests/*.test.mjs` 均通过。
 - 2026-08-04 阶段 6B 推送记录：主变更提交 `f286408853afa7732b8ae14f0104df020b7e1a9e` 已通过命令级代理推送到 `origin/main`，并通过 `git ls-remote origin refs/heads/main` 确认远程 main 指向该提交。
+
+## 阶段 6C：普通用户前置依赖说明补充
+
+### 目标
+
+- [x] 明确桌面壳点击 `启动后端` 会自动把内置 Linux 后端部署到 WSL `/opt/vohive`，普通用户不需要手动部署。
+- [x] 明确桌面便携包不会下载、内置或安装 `usbipd-win`，用户需要从官方渠道安装。
+- [x] 补充 WSL、usbipd-win、WebView2 官方链接和首次 WSL 初始化、`wsl --update` 提示。
+- [x] 明确普通用户不需要 Go、Node、Rust、pnpm、Docker 或 VirtualBox。
+
+### 实施步骤
+
+- [x] 在仓库文档回归测试中增加运行前置依赖说明断言。
+- [x] 更新 `README.md` 的环境要求、安装边界和限制说明。
+- [x] 更新 `.github/release-notes/v1.0.0.md` 的环境要求和已知限制。
+- [x] 运行文档测试并提交推送。
+
+### 评审记录
+
+- 2026-08-04 阶段 6C 文档补充：已补充 WSL、usbipd-win、WebView2 官方链接，并明确便携包不会下载/内置/安装系统级依赖；普通用户无需安装开发工具链或 VirtualBox。验证：`node --test tests/*.test.mjs` 7 项通过，`git diff --check` 无 whitespace 错误，仅有 Windows 换行提示；关键说明扫描已命中 README、Release note 和回归测试。

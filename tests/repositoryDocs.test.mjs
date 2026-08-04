@@ -62,3 +62,16 @@ test('desktop Linux backend binary is not tracked by source control', () => {
   const ignoreRules = readRepoFile('.gitignore')
   assert.match(ignoreRules, /desktop\/src-tauri\/resources\/vohive\/vohive-open_linux_amd64/)
 })
+
+test('README documents desktop runtime prerequisites and manual system dependencies', () => {
+  const readme = readRepoFile('README.md')
+
+  assert.match(readme, /https:\/\/learn\.microsoft\.com\/windows\/wsl\/install/)
+  assert.match(readme, /https:\/\/github\.com\/dorssel\/usbipd-win/)
+  assert.match(readme, /https:\/\/github\.com\/dorssel\/usbipd-win\/releases/)
+  assert.match(readme, /https:\/\/developer\.microsoft\.com\/microsoft-edge\/webview2/)
+  assert.match(readme, /不会安装或配置 WSL2/)
+  assert.match(readme, /不会下载、内置或安装 `usbipd-win`/)
+  assert.match(readme, /首次安装 WSL 发行版后/)
+  assert.match(readme, /无需安装 Go、Node、Rust、pnpm、Docker 或 VirtualBox/)
+})
