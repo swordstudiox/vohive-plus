@@ -10,4 +10,6 @@ test('tauri config disables installer bundling while keeping runtime resources',
   assert.equal(config.bundle.active, false)
   assert.deepEqual(config.bundle.resources, ['resources/vohive/*'])
   assert.ok(!JSON.stringify(config.bundle).includes('nsis'))
+  assert.match(config.build.beforeBuildCommand, /pnpm sync:backend/)
+  assert.match(config.build.beforeDevCommand, /pnpm sync:backend/)
 })

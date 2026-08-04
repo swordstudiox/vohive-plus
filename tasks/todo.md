@@ -168,6 +168,107 @@
 - [x] `desktop` 下 `pnpm run build`、`desktop/src-tauri` 下 `cargo test`、`pnpm tauri build --debug` 通过；新版 debug exe 位于 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。
 - [ ] 剩余问题：WSL2 USB/IP 下 `/dev/cdc-wdm0` raw QMI 控制面仍 `context deadline exceeded`，QMI 数据面/代理能力需继续走 qmi-proxy/libqmi 侧车、ECM/MBIM 模式或 VirtualBox USB 直通专项。
 
+## 阶段 2E：DJI QMI 数据面专项验证
+
+### 目标
+
+- [x] 验证 qmi-proxy/libqmi 侧车是否能让 WSL2 下 `/dev/cdc-wdm0` 控制面恢复可用。
+- [x] 只读确认 DJI/Baiwang 模组当前 USB 网络模式和可切换模式范围，评估 ECM/MBIM 路线。
+- [x] 检查 VirtualBox Headless + USB 直通前置条件。
+- [ ] 安装 VirtualBox 后，用独立 VM 路线实机验证问题是否来自 WSL2 USB/IP。
+
+### 验证计划
+
+- [x] 路线 A：WSL2 内检查 `qmicli`、`qmi-proxy`、libqmi 包；必要时构建阶段联网安装 `libqmi-utils`，再用 `qmicli --device-open-proxy` 查询 DMS 身份。
+- [x] 路线 B：通过 VoHive 当前 AT 后端只读执行 `AT+QCFG="usbnet"`、`AT+QCFG="usbnet"?`、`AT+QCFG=?`，先不写入新模式，避免设备重枚举后掉线。
+- [x] 路线 C：Windows 侧检查 `VBoxManage` 是否可用；如果本机已安装 VirtualBox，再确认 USB filter/headless 所需能力；未安装则记录为后续手工验证前置项。
+
+### 风险约束
+
+- [x] 不在未确认回滚方式前写入 `AT+QCFG="usbnet",...` 或其它会改变 USB 枚举的 AT 命令。
+- [x] 不停止当前 AT 后端，除非需要独占 QMI 控制口且已有恢复步骤。
+- [x] 不自动安装 VirtualBox 或 Extension Pack；只检查本机条件并给出下一步。
+
+### 验证结果
+
+- [x] 当前 Windows 侧 `usbipd list` 显示 DJI/Baiwang `2ca3:4006` 仍为 `Attached`；WSL 内存在 `/dev/cdc-wdm0`、`/dev/ttyUSB0-3`、`wwan0`。
+- [x] WSL 内原先没有 `qmicli/qmi-proxy`；已安装 `libqmi-utils`、`libqmi-proxy`、`libqmi-glib5`、`libmbim-glib4`、`libmbim-proxy` 等包，新增体积约 6.4 MB。
+- [x] 安装后 `qmicli=/usr/bin/qmicli`，`qmi-proxy=/usr/libexec/qmi-proxy`，路径符合 VoHive 之前自动查找的 `/usr/libexec/qmi-proxy`。
+- [x] `qmicli -d /dev/cdc-wdm0 --device-open-proxy --dms-get-manufacturer` 失败：`CID allocation failed in the CTL client: Transaction timed out`。
+- [x] `qmicli -d /dev/cdc-wdm0 --dms-get-manufacturer` raw 模式同样在 CTL 分配 DMS client 阶段超时，说明问题不是 VoHive QMI 实现或缺少 qmi-proxy 单点导致。
+- [x] qmicli 测试时间附近 WSL `dmesg` 继续出现大量 `vhci_hcd: urb->status -104`，支持“WSL2 USB/IP 控制传输不稳定/被断开”的判断。
+- [x] 当前 DJI/Baiwang 模组 `ATI` 返回 `Baiwang QDC507 Revision: QDC507GLEFM21`。
+- [x] 当前 `AT+QCFG="usbnet"` 和 `AT+QCFG="usbnet"?` 均返回 `+QCFG: "usbnet",0`，即当前仍是 QMI/RMNET 类模式。
+- [x] 当前 USB interface class 全部为 `ff` vendor-specific，`1.0-1.3` 绑定 `option`，`1.4` 绑定 `qmi_wwan`；不是 ECM/MBIM 枚举。
+- [x] `AT+QCFG=?` 在该模组上只返回 `>`，不适合作为安全范围查询；后续范围判断以项目现有模板和实机写入回滚方案为准。
+- [x] 当前蜂窝状态仍正常：`AT+QNWINFO` 返回 LTE Band 3，`AT+CEREG?` 返回 `0,5`，`AT+CGATT?` 返回 `1`。
+- [x] Windows 侧未发现 VirtualBox：`VBoxManage` 不在 PATH 和常见安装路径，未发现 `VBox*` 服务，也未发现 VirtualBox 卸载注册表项。
+- [x] 验证后 VoHive 仍在线：`/ping` 返回 `pong`，`wwan0` 为 `online`，`healthy=true`，`esim_transport=at`。
+- [ ] VirtualBox USB 直通需先安装 VirtualBox 后再继续：最小验证步骤是创建 Debian VM、安装 `usbutils/libqmi-utils/libmbim-utils/iproute2`、配置 USB filter 直通 `2ca3:4006`，再在 VM 内重跑 `qmicli`。
+
+## 阶段 2F：DJI ECM 模式可回滚验证
+
+### 目标
+
+- [x] 验证 `AT+QCFG="usbnet",1` 后 DJI/Baiwang 模组是否枚举为 ECM 类网卡。
+- [x] 验证 ECM 模式下是否还能保留 AT 口，用于回滚到 `AT+QCFG="usbnet",0`。
+- [x] 验证回滚后 WSL2 路线能恢复到当前 AT 后端 online 状态。
+
+### 执行约束
+
+- [x] 切换前保存当前状态：USBNET 模式、USB interface 绑定、`usbipd list`、VoHive 设备状态。
+- [x] 优先使用 VoHive API 执行 `PATCH /api/devices/wwan0/usbnet-mode`，因为它走已有 AT 超时与错误处理。
+- [x] 切 ECM 后等待 Windows/WSL USB 重枚举；如果设备从 WSL 掉出，先用桌面壳同等流程 `usbipd attach --wsl` + WSL USB prepare 恢复。
+- [x] 只在确认 ECM 下有 AT 口后执行回滚；如果 VoHive worker 不可用，则用 WSL 内带超时的 AT 工具/项目 API 退路，不用 `cat < /dev/ttyUSB*`。
+
+### 验证结果
+
+- [x] 切换前基线：Windows `usbipd list` 显示 `2ca3:4006 Baiwang` 为 `Attached`；WSL 内为 `/dev/cdc-wdm0`、`/dev/ttyUSB0-3`、`wwan0`；USB interface `1.0-1.3` 绑定 `option`，`1.4` 绑定 `qmi_wwan`；`AT+QCFG="usbnet"?` 返回 `0`；VoHive `wwan0` online。
+- [x] 通过 `PATCH /api/devices/wwan0/usbnet-mode {"mode":1}` 成功发送 ECM 切换，返回“指令已发送，设备正在重启...”。
+- [x] 切 ECM 后设备从 WSL 掉回 Windows `Shared`，重新执行 `usbipd attach --wsl --busid 2-1` 后回到 WSL。
+- [x] ECM 枚举形态：`1-1:1.4 class=02 sub=06 proto=00`，`1-1:1.5 class=0a sub=00 proto=00`，说明模组确实进入 CDC ECM 拓扑。
+- [x] 因此前给 `option` 写过 `2ca3:4006 new_id`，ECM 的 `1.4/1.5` 初始会被 `option` 抢占；手工只释放 `1.4/1.5` 并绑定 `cdc_ether` 后，生成 ECM 网卡 `enx72175c718065`。
+- [x] ECM 模式保留 AT 口：`/dev/ttyUSB2` 和 `/dev/ttyUSB3` 均可响应 `ATI`，可用于回滚。
+- [x] ECM 链路层可用：`udhcpc` 从模组 DHCP 获得 `192.168.225.30/24`，默认网关 `192.168.225.1`，网关 ping 成功。
+- [x] ECM 公网出网未验证成功：`curl --interface enx72175c718065 http://connectivitycheck.gstatic.com/generate_204` 超时，`ping -I enx72175c718065 1.1.1.1` 丢包；但 AT 显示 PDP context 1 已获得运营商地址 `10.52.234.131` 和 DNS `13.248.255.75`。
+- [x] `AT+QNETDEVCTL=1,1` 和 `AT+QNETDEVCTL=1,1,1` 在该固件均返回 `ERROR`，不能作为 ECM 出网启动命令。
+- [x] 回滚通过 `/dev/ttyUSB2` 执行 `AT+QCFG="usbnet",0`，返回 `OK`；随后设备重枚举回 Windows `Shared`，重新 attach 到 WSL 后运行 `/opt/vohive/bin/vohive --prepare-usb`，恢复 `/dev/cdc-wdm0`、`/dev/ttyUSB0-3`、`wwan0` 和 `qmi_wwan` 绑定。
+- [x] 回滚后调用 `/api/devices/actions/rescan` 恢复 VoHive worker；`AT+QCFG="usbnet"?` 返回 `0`。
+- [x] 回滚后的无线注册有约 2 分钟恢复窗口；期间可能出现 `CREG/CEREG/CGREG=3` 和 `No Service`，最终自动回到 `46001`，`CREG/CEREG/CGREG=5`，`CGATT=1`。
+- [x] 最终 VoHive 状态：`wwan0 running=true healthy=true control_online=true physical_present=true worker_running=true radio_registered=true lifecycle_phase=online esim_transport=at`，运营商为中国联通，LTE Band 3。
+- [ ] 后续如果要把 ECM 做成正式路线，需要新增 WSL USB prepare 的 ECM 分支：`usbnet=1` 时不要强制把 `1.4` 绑回 `qmi_wwan`，而是释放 `1.4/1.5` 给 `cdc_ether`，并明确 DHCP/出网启动策略。
+
+## 阶段 2G：WSL USB Prepare ECM 自动绑定
+
+### 目标
+
+- [x] `PrepareWSLUSB` 能识别 DJI/Baiwang `usbnet=1` ECM 拓扑。
+- [x] ECM 模式下自动释放被 `option` 抢占的 `1.4/1.5`，并把 `1.4` 绑定到 `cdc_ether`。
+- [x] ECM 模式下保留 `1.0-1.3` AT 口，不强制回绑 `qmi_wwan`。
+- [x] QMI 模式下现有 `qmi_wwan` 准备逻辑保持不变。
+
+### 实施计划
+
+- [x] RED：新增 `TestPrepareWSLUSBPreparesBaiwangECMInterface`，验证 ECM interface 从 `option` 切到 `cdc_ether`。
+- [x] RED：新增 `TestPrepareWSLUSBIsIdempotentWhenECMAlreadyPrepared`，验证已绑定 `cdc_ether` 时不重复写 sysfs。
+- [x] GREEN：`PrepareWSLUSB` 加载 `usbnet/cdc_ether`，按 interface class 分流 QMI/ECM 绑定逻辑。
+- [x] GREEN：设备摘要和 ready 判定兼容 ECM：ECM 允许 `control_path` 为空，但必须有 `net_interface`、`ATPorts` 和 `driver_name=cdc_ether`。
+- [x] 验证：运行 `go test ./internal/device -run 'PrepareWSLUSB' -count=1`，再运行 `go test ./internal/device ./internal/api -count=1`。
+- [x] 实机验证：当前回滚后的 QMI 模式执行 `/opt/vohive/bin/vohive --prepare-usb` 仍返回 prepared。
+
+### 验证结果
+
+- [x] RED 验证：新增 ECM 测试后，旧实现会把 ECM `1.4` 错绑到 `qmi_wwan`，并在已绑定 `cdc_ether` 时尝试释放 `cdc_ether`，测试按预期失败。
+- [x] `PrepareWSLUSB` 新增 interface class 分流：`1.4 class=02 sub=06` 且 `1.5 class=0a` 时走 ECM；否则保持 QMI 准备路径。
+- [x] ECM 准备路径会释放 `1.4/1.5` 上非 `cdc_ether` 驱动，绑定 `1.4` 到 `cdc_ether`；已是 `cdc_ether` 时幂等无 sysfs 写入。
+- [x] QMI ready 判定保持兼容：只要存在 `control_path`、`net_interface` 和 AT 口即可，不额外要求测试 sysfs driver 文件被模拟更新为 `qmi_wwan`。
+- [x] 专项测试 `go test ./internal/device -run PrepareWSLUSB -count=1` 通过。
+- [x] 影响范围测试 `go test ./internal/device ./internal/api -count=1` 通过。
+- [x] 已重新编译 `dist/vohive-open_linux_amd64`，同步到 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`。
+- [x] 已部署新版二进制到 WSL `/opt/vohive/bin/vohive` 并重启后端；当前后端 PID `49748`，`/ping` 返回 `pong`。
+- [x] 新版运行中 API `POST /api/devices/actions/prepare-usb` 在当前 QMI 模式返回 `prepared=true`，actions 仅包含原 QMI 路线模块 `usbserial/option/qmi_wwan/cdc_wdm`，设备仍为 `driver_name=qmi_wwan`。
+- [x] 后端重启后一度未注册网络，执行 `AT+COPS=0` 和一次完整模组重启后恢复；最终 `CREG/CEREG/CGREG=5`，自动注册到 `46000`，`CGATT=1`，VoHive `wwan0` online。手动选 `46001` 被模组拒绝，保留自动选网。
+
 ## 阶段 2B：漫游开关正式功能
 
 ### 目标
@@ -442,6 +543,63 @@
 - [x] 创建并推送 `v1.0.0` tag 触发 GitHub Actions。
 - [ ] 检查 Actions 和 Release 页面产物。本环境 GitHub API、浏览器控制和普通 HTTPS 页面查询受限，已通过 `git ls-remote` 确认远端 `main` 和 `v1.0.0` tag 存在；Actions/Release 页面仍需在 GitHub 网页确认。
 
+## 阶段 2H：URC 状态日志降噪
+
+### 目标
+
+- [x] 同值、周期性状态 URC 不再按 INFO 反复刷屏。
+- [x] `+CPIN: READY` 重复上报时不再反复广播 RDY，避免设备池每分钟输出 `[事件驱动] Modem RDY`。
+- [x] 状态首次出现和真实变化仍按 INFO 输出。
+- [x] 新短信、USSD、来电、挂断、PCM 流控等事件型 URC 不被降噪。
+
+### 推荐方案
+
+- [x] 在 modem 层处理根因，而不是在前端隐藏重复行。
+- [x] 只抑制日志和重复 READY 广播，不抑制 SIM 状态 handler、USSD 分发、短信读取等业务事件。
+- [x] 新增小型状态缓存，按 URC key 和解析后的字段生成稳定签名；首次或签名变化时记录，重复同值时静默。
+- [x] 用 TDD 覆盖 `+CREG/+CGREG/+CEREG`、`+CPIN`、`+QSIMSTAT` 和 `+CMTI` 的差异。
+
+### 实施步骤
+
+- [x] 写失败测试：状态型 URC 首次记录、重复同值不记录、变化后再记录。
+- [x] 写失败测试：重复 `+CPIN: READY` 不重复触发 RDY。
+- [x] 写失败测试：`+CMTI` 新短信通知每次都应保留。
+- [x] 实现 modem 层 URC 状态签名缓存和 READY 触发降噪。
+- [x] 运行 `go test ./internal/modem -count=1`。
+- [x] 运行相关后端测试并重新编译 Linux 后端二进制。
+- [x] 同步后端二进制到桌面资源和 WSL `/opt/vohive/bin/vohive`。
+- [x] 实机观察日志至少 2 分钟，确认重复状态日志不再刷屏。
+
+## 阶段 4K：桌面内置后端二进制去 Git 跟踪
+
+### 目标
+
+- [x] `dist/`、Tauri `target/` 和桌面内置 Linux 后端二进制都不再进入 Git 跟踪。
+- [ ] 本地可达历史和远程 `origin/main` 不再包含 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`。
+- [ ] 远程 `v1.0.0` tag 同步到清理后的历史。
+- [ ] 桌面构建仍能在构建前获得 Linux 后端资源，不依赖仓库提交大二进制。
+- [x] 用户已确认执行历史清理；允许重写本地未推送历史，并对 `origin/main` 与 `v1.0.0` tag 执行 force push。
+
+### 推荐方案
+
+- [x] 保留 `desktop/src-tauri/resources/vohive/config.example.yaml` 和 `vohive-usb-prepare.sh` 作为小型运行资源。
+- [x] 新增 `.gitignore` 规则，只忽略 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`。
+- [x] 用 `git rm --cached` 从索引移除二进制，保留本地文件方便当前 debug exe/本地构建继续使用。
+- [x] 新增桌面资源同步脚本：优先从 `dist/vohive-open_linux_amd64` 复制；若目标资源已存在则复用；二者都不存在时给出明确错误。
+- [x] 调整 Tauri `beforeBuildCommand`，本地/CI 打桌面包前自动检查或同步后端资源。
+
+### 实施步骤
+
+- [x] 修改 `.gitignore`，忽略桌面内置 Linux 后端二进制。
+- [x] 新增桌面资源同步脚本和测试。
+- [x] 调整桌面构建脚本/配置调用同步脚本。
+- [x] 从 Git 索引移除已跟踪二进制，但不删除本地工作文件。
+- [x] 运行桌面脚本测试和相关配置测试。
+- [x] 重写本地可达历史，移除已跟踪二进制路径。
+- [x] 清理本地旧引用与不可达大对象。
+- [ ] 通过代理推送 `origin/main` 和 `v1.0.0` tag。
+- [ ] 验证远程 `main` 和 tag 已指向清理后的提交。
+
 ## 评审记录
 
 - 2026-08-03 阶段 1 已执行：本目录原先只有 `tasks/`，未发现上游源码；已克隆 `windloom/vohive-open` 到 `upstream/vohive-open`，当前 commit 为 `de689a554d1b86b97dcc71140bfbee250eff1d4e`。
@@ -477,3 +635,5 @@
 - 2026-08-04 大疆 QMI 连接修复：用户日志显示自动选择 `qmi-proxy` 后失败，错误为 `/usr/libexec/qmi-proxy` 不存在且 `qmi_proxy_fallback_to_raw=false`。实查 `/opt/vohive/config/config.yaml` 未显式配置 `qmi_use_proxy`，只有 `device_backend: qmi`，说明这是瞬时控制口持有者触发的自动 proxy 选择。已修改 QMI client options：显式用户开启 proxy 时保持严格 proxy；自动选择 proxy 时开启 `ProxyFallbackToRaw`，使缺少 `qmi-proxy` 的 WSL2 环境能回退 raw QMI。
 - 2026-08-04 大疆启动识别修复：针对只有 `device_backend: qmi` + `modem_imei` 的配置，启动时优先通过同 USB 拓扑的 AT 口确认 IMEI，再把当前 `/dev/cdc-wdm0`、`wwan0`、`/dev/ttyUSB2` 合回 QMI 设备，避免 DJI raw QMI 身份探测超时导致“未找到匹配 IMEI”。同时修复 `collectRescanHardware` 读取进程级全局配置导致完整托管 QMI 重绑被无关设备 AT 回退需求短路的测试顺序问题。
 - 2026-08-04 大疆实机验证：修复后二进制已部署到 WSL `/opt/vohive/bin/vohive` 并启动。`/ping` 返回 200；`/api/devices/discovered?with_imei=1` 返回 `imei=863212060145346`、`control_path=/dev/cdc-wdm0`、`net_interface=wwan0`、`at_port=/dev/ttyUSB2`、`configured=true`。启动早期 worker 可注册，但 raw QMI 持续超时后被健康阈值下线，最终 `/api/devices` 显示 `physical_present=true`、`worker_running=false`、`control_online=false`、`lifecycle_phase=usb_wait`、`lifecycle_reason=qmi_health_threshold`。AT 查询确认模块为 `Baiwang QDC507`，`AT+QCFG="usbnet"` 返回 `0`，SIM `READY`，`CEREG: 0,5`，`QNWINFO` 为 LTE/46001/Band 3。剩余问题是 WSL2 USB/IP 下 raw QMI 控制面仍 `context deadline exceeded`，需后续专项处理。
+- 2026-08-04 阶段 2H URC 日志降噪：重复刷屏根因是后端每分钟收到同值 `+QSIMSTAT/+CPIN/+CREG` 仍按 INFO 输出，且重复 `+CPIN: READY` 会再次广播 RDY 触发设备池日志。已在 modem 层新增状态型 URC 签名缓存，只抑制日志和重复 READY 兜底广播，不阻断 SIM 状态 handler、短信、USSD、来电等业务分发。验证：`go test ./internal/modem -count=1` 与 `go test ./internal/api ./internal/device ./internal/modem -count=1` 通过；新二进制已部署到桌面资源和 WSL `/opt/vohive/bin/vohive`；实机日志显示 17:03:45 重启后只记录首次状态和 `CREG 5 -> 2 -> 5` 真实变化，不再按分钟重复 `QSIMSTAT/CPIN/Modem RDY/CREG=5`。
+- 2026-08-04 阶段 4K 桌面内置后端二进制去 Git 跟踪：`desktop/src-tauri/resources/vohive/vohive-open_linux_amd64` 已从 Git 索引移除并加入 `.gitignore`，本地文件保留；新增 `desktop/scripts/sync-backend-resource.mjs`，Tauri dev/build 前自动从 `dist/vohive-open_linux_amd64` 同步或复用 CI 已复制的资源。验证：桌面 Node 测试通过，`git ls-files` 已查不到三个大二进制路径，`git check-ignore` 均命中忽略规则。

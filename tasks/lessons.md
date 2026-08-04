@@ -59,6 +59,38 @@
 - 大疆/Baiwang `QDC507` 在 WSL2 中可以通过 AT 口稳定读取 `ATI`、`AT+QCFG="usbnet"`、`CPIN/CEREG/QNWINFO`，即蜂窝注册和 AT 控制面可以是好的；这不等于 `/dev/cdc-wdm0` raw QMI 控制面也可用。
 - WSL USB/IP 下不要用 shell `cat < /dev/ttyUSB*` 这类方式读串口做诊断，打开/读取可能卡住并留下进程；优先通过项目的临时 AT API 或 Go 层带硬超时的串口探测。
 - 如果 WSL2 下 `qmi_wwan`、`cdc-wdm0`、`wwan0` 都存在但 QMI Core 长期 `context deadline exceeded`，应把它当作 USB/IP QMI 控制传输问题单独处理；候选路线包括打包可控的 qmi-proxy/libqmi 侧车、切换 ECM/MBIM 模式，或用 VirtualBox USB 直通验证是否为 WSL USB/IP 限制。
+- 官方 `qmicli` 走 `--device-open-proxy` 仍在 `CID allocation failed in the CTL client: Transaction timed out` 失败时，可以排除“只是 VoHive QMI 实现不兼容”或“只是缺少 qmi-proxy”的单点假设；要继续看 USB/IP、模组 USB 组态或真实 USB 直通。
+- Ubuntu 24.04 的 `libqmi-proxy` 会把 `qmi-proxy` 安装到 `/usr/libexec/qmi-proxy`，和 VoHive 当前探测路径一致；打包侧车时这个路径可以作为兼容目标，但它不能修复 WSL2 USB/IP 本身丢 URB 的问题。
+- 对 DJI/Baiwang `QDC507`，`AT+QCFG="usbnet"` 与 `AT+QCFG="usbnet"?` 都能查询当前模式；`AT+QCFG=?` 在当前固件上只返回 `>`，不要把它作为安全的能力范围探测命令。
+- 当前 `usbnet=0` 下，该模块在 WSL2 中仍是 vendor-specific 接口加 `option/qmi_wwan` 绑定，不是 ECM/MBIM 枚举；验证 ECM/MBIM 必须写入模式并重启模组，执行前要有回滚步骤和可重新 attach 的桌面流程。
+- `AT+QCFG="usbnet",1` 后 DJI/Baiwang `QDC507` 会枚举出 CDC ECM 形态：控制接口 `class=02 sub=06`，数据接口 `class=0a`；但如果此前给 `option` 写过 `2ca3:4006 new_id`，`option` 会先抢占 ECM 的 `1.4/1.5`，需要只释放这两个接口并绑定 `cdc_ether`，才能生成 `enx*` ECM 网卡。
+- ECM 模式下 AT 口仍可存在；本机实测 `/dev/ttyUSB2` 和 `/dev/ttyUSB3` 都能响应 `ATI`。VoHive worker 因旧 `wwan0/cdc-wdm0` 消失进入 `usb_wait` 时，应使用带硬超时的临时串口工具回滚，不要依赖已不可用的 API worker。
+- ECM DHCP 成功不等于公网出网成功。本机实测 `udhcpc` 可从模组拿到 `192.168.225.30/24`，网关 `192.168.225.1` 可 ping；但 `curl --interface` 和公网 ping 仍超时，同时 AT 侧 PDP context 已有运营商地址。这说明 ECM 正式化还需要单独处理数据连接控制、APN/拨号状态或模组 NAT 出口行为。
+- 该固件上 `AT+QNETDEVCTL=1,1` 和 `AT+QNETDEVCTL=1,1,1` 都返回 `ERROR`，不能作为 DJI/Baiwang `QDC507` 的 ECM 出网启动命令。
+- WSL USB prepare 支持 ECM 时，不能简单把 Baiwang `1.4` 固定绑到 `qmi_wwan`。应先读 `bInterfaceClass/bInterfaceSubClass`：`class=02 sub=06` 加 `1.5 class=0a` 走 `cdc_ether`，vendor-specific 才走 `qmi_wwan`。
+- 给 WSL prepare 增加 ECM 分支后，QMI ready 判定不要额外收紧到必须读到 `driver_name=qmi_wwan`；测试 sysfs 和部分内核异步状态可能已有 `/dev/cdc-wdm*`/`wwan*`，但 driver 文件未及时反映，旧 QMI 行为应保持“节点齐全即 prepared”。
+- 后端重启或 USB 模式切换后，DJI/Baiwang 模组可能停在 `COPS: 0`、`No Service`、`CREG/CEREG/CGREG=0/3`；如果 `CFUN=1`、`CPIN=READY`、漫游允许且 USB 模式正确，可先发 `AT+COPS=0` 重新触发自动选网，再轮询 1 至 2 分钟。若仍无服务，可用 `AT+CFUN=1,1` 完整重启模组并重新 attach/prepare/rescan；自动选网可能选择 `46000` 而不是基线时的 `46001`，只要 `CREG/CEREG/CGREG=5` 和 `CGATT=1` 即可认为蜂窝注册已恢复。
+- 从 ECM 回滚到 `usbnet=0` 后，USB 拓扑可以恢复，但蜂窝注册可能要等约 2 分钟才从 `No Service`/`CREG=3` 回到 `CREG/CEREG/CGREG=5`；不要在刚重枚举后的短暂窗口误判回滚失败。
+- VirtualBox USB 直通验证不能只看项目代码是否支持；Windows 侧必须先有 `VBoxManage`、VirtualBox 驱动/服务和可用 USB filter。未安装 VirtualBox 时，应记录为前置条件，不要在调试流程里自动安装整套虚拟化软件。
 - 添加设备弹窗里的“自动填充发现路径”和“用户选择后端”要分清阶段：选择硬件时可以给默认值，保存时只能刷新路径/IMEI，不能再次按发现结果重算并覆盖用户选择，否则用户选 AT 会被悄悄保存成 QMI。
 - 对 DJI/Baiwang `2ca3:4006` 这种在 WSL2 USB/IP 下 raw QMI 控制面超时、但 AT 口稳定可用的设备，发现到 AT 口时添加设备应默认 AT 后端；QMI 应作为后续数据面专项，而不是默认路径。
 - 单测不要硬编码真实 Linux 设备节点名（例如 `/dev/cdc-wdm0`、`/dev/ttyUSB2`）来制造“初始化失败”；当实机正好接入时测试会误打开真实硬件并变成环境相关。应使用明显不存在的 `/dev/vohive-test-*` 路径。
+
+## 2026-08-04 URC 日志降噪
+
+- 桌面/Web 日志重复刷屏时，先确认是前端重复渲染还是后端真实重复输出；本次 `QSIMSTAT/CPIN/CREG/Modem RDY` 是后端每次收到同值 URC 都写 INFO，不应在前端用隐藏行来掩盖根因。
+- URC 降噪只能压日志和重复状态触发，不能阻断业务分发。`+CMTI` 新短信、`+CUSD` USSD、来电/挂断等事件即使内容相同也要继续按事件处理。
+- `+CPIN: READY` 在本项目里同时承担“SIM 状态”和“RDY 兜底信号”两个含义；去重时要按“进入 READY”触发 RDY，而不是每次 READY 都广播，否则设备池会被周期性 READY 唤醒并反复写 `[事件驱动] Modem RDY`。
+- 注册状态 URC 可能是 `+CREG: 0,5` 查询式字段，也可能是 `+CREG: 5` 单字段上报；做状态签名前必须先把 `stat` 解析正确，否则变化日志会被误压掉。
+
+## 2026-08-04 桌面内置后端资源
+
+- `dist/`、`desktop/src-tauri/target/` 和 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64` 都是构建/运行阶段的大二进制副本，不应长期提交到 Git；Git 只保留源码、小型配置资源和同步脚本。
+- Tauri 的 `resources/` 目录是打包输入，不等于必须由 Git 跟踪。CI 可以在构建桌面前把后端 artifact 复制进去，本地也可以由同步脚本从 `dist/` 复制进去。
+- 从 Git 中移除已跟踪的大二进制时，用 `git rm --cached` 保留本地文件，再加 `.gitignore`；这解决“以后不跟踪”和“远程当前分支删除文件”。如果要清掉历史 commit 中的大文件对象，需要单独走历史重写和 force-push 流程，不能混在普通修复提交里。
+- 如果用户确认要连历史一起清掉，必须先检查未推送提交中是否还有“大二进制先修改、后删除”的序列；这种序列直接推送仍会把新 blob 带到远程历史，应先重写本地可达历史，确认 `git rev-list --objects --all` 已查不到目标路径，再 force push 目标分支和相关 tag。
+
+## 2026-08-04 GitHub 网络代理
+
+- 当 `git push`、`git ls-remote` 等 GitHub HTTPS 操作报 `Connection was reset`、`Could not connect to server` 或 443 端口连接失败时，先用本机 HTTP 代理 `http://127.0.0.1:10808` 做一次性重试，例如 `git -c http.proxy=http://127.0.0.1:10808 -c https.proxy=http://127.0.0.1:10808 push origin main`。
+- 优先使用命令级 `-c http.proxy=... -c https.proxy=...`，不要直接改全局 Git 代理配置；这样不会影响局域网、WSL、包管理器或其他仓库的网络行为。

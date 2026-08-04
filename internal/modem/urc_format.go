@@ -117,8 +117,10 @@ func (m *Manager) formatURC(line string) urcFormatResult {
 		rest := parseURCAfterColon(s)
 		fields := parseCommaFields(rest)
 		stat := -1
-		if len(fields) >= 2 {
-			if v, ok := parseInt(fields[1]); ok {
+		locationOffset := 1
+		if idx, ok := registrationStatusIndex(fields); ok {
+			locationOffset = idx + 1
+			if v, ok := parseInt(fields[idx]); ok {
 				stat = v
 			}
 		}
@@ -128,11 +130,11 @@ func (m *Manager) formatURC(line string) urcFormatResult {
 		if stat >= 0 && key == "+CREG" {
 			out.Fields = append(out.Fields, "stat_text", m.getRegStatusText(stat))
 		}
-		if len(fields) >= 4 {
-			out.Fields = append(out.Fields, "lac", fields[2], "cell_id", fields[3])
+		if len(fields) >= locationOffset+2 {
+			out.Fields = append(out.Fields, "lac", fields[locationOffset], "cell_id", fields[locationOffset+1])
 		}
-		if len(fields) >= 5 {
-			out.Fields = append(out.Fields, "act", fields[4])
+		if len(fields) >= locationOffset+3 {
+			out.Fields = append(out.Fields, "act", fields[locationOffset+2])
 		}
 		return out
 
@@ -226,6 +228,24 @@ func (m *Manager) formatURC(line string) urcFormatResult {
 		out.Msg = "URC: 未分类"
 		out.Fields = append(out.Fields, "raw", s)
 		return out
+	}
+}
+
+func registrationStatusIndex(fields []string) (int, bool) {
+	switch len(fields) {
+	case 0:
+		return 0, false
+	case 1:
+		return 0, true
+	case 2:
+		return 1, true
+	default:
+		if mode, ok := parseInt(fields[0]); ok && mode >= 0 && mode <= 2 {
+			if stat, ok := parseInt(fields[1]); ok && stat >= 0 && stat <= 10 {
+				return 1, true
+			}
+		}
+		return 0, true
 	}
 }
 

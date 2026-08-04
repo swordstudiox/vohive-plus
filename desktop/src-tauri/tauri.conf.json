@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.vohive.plus",
   "build": {
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "pnpm sync:backend && pnpm dev",
+    "beforeBuildCommand": "pnpm sync:backend && pnpm build",
     "devUrl": "http://127.0.0.1:5176",
     "frontendDist": "../dist"
   },

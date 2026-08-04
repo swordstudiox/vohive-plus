@@ -62,7 +62,11 @@ func PrepareWSLUSB(ctx context.Context, opts WSLUSBPrepareOptions) (WSLUSBPrepar
 	}
 	result.SupportedDeviceFound = true
 
-	for _, module := range []string{"usbserial", "option", "qmi_wwan", "cdc_wdm"} {
+	modules := []string{"usbserial", "option", "qmi_wwan", "cdc_wdm"}
+	if anyBaiwangECMTopology(roots) {
+		modules = append(modules, "usbnet", "cdc_ether")
+	}
+	for _, module := range modules {
 		if err := opts.Modprobe(ctx, module); err != nil {
 			return result, fmt.Errorf("加载内核模块 %s 失败: %w", module, err)
 		}
@@ -76,7 +80,7 @@ func PrepareWSLUSB(ctx context.Context, opts WSLUSBPrepareOptions) (WSLUSBPrepar
 	}
 
 	for _, usbPath := range roots {
-		if action, err := bindBaiwangQMIInterface(opts, usbPath); err != nil {
+		if action, err := bindBaiwangDataInterface(opts, usbPath); err != nil {
 			return result, err
 		} else {
 			result.Actions = append(result.Actions, action...)
@@ -186,6 +190,13 @@ func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string, write f
 	return "option-new-id:" + strings.ReplaceAll(idLine, " ", ":"), nil
 }
 
+func bindBaiwangDataInterface(opts WSLUSBPrepareOptions, usbPath string) ([]string, error) {
+	if isBaiwangECMTopology(usbPath) {
+		return bindBaiwangECMInterface(opts, usbPath)
+	}
+	return bindBaiwangQMIInterface(opts, usbPath)
+}
+
 func bindBaiwangQMIInterface(opts WSLUSBPrepareOptions, usbPath string) ([]string, error) {
 	usbName := filepath.Base(usbPath)
 	qmiInterface := filepath.Join(usbPath, usbName+":1.4")
@@ -209,13 +220,50 @@ func bindBaiwangQMIInterface(opts WSLUSBPrepareOptions, usbPath string) ([]strin
 	return actions, nil
 }
 
+func bindBaiwangECMInterface(opts WSLUSBPrepareOptions, usbPath string) ([]string, error) {
+	usbName := filepath.Base(usbPath)
+	controlInterface := filepath.Join(usbPath, usbName+":1.4")
+	dataInterface := filepath.Join(usbPath, usbName+":1.5")
+	controlName := filepath.Base(controlInterface)
+	if readUSBInterfaceDriver(controlInterface) == "cdc_ether" {
+		return nil, nil
+	}
+
+	actions := make([]string, 0, 3)
+	for _, ifPath := range []string{controlInterface, dataInterface} {
+		interfaceName := filepath.Base(ifPath)
+		driver := readUSBInterfaceDriver(ifPath)
+		if driver == "" || driver == "cdc_ether" {
+			continue
+		}
+		if err := opts.SysfsWrite(filepath.Join(opts.USBDriversPath, driver, "unbind"), interfaceName); err != nil && !isNotBoundSysfsError(err) {
+			return actions, fmt.Errorf("释放 ECM interface %s 的 %s 驱动失败: %w", interfaceName, driver, err)
+		}
+		actions = append(actions, "unbind:"+driver+":"+interfaceName)
+	}
+	if err := bindECMInterfaceWithRetry(opts, controlInterface, controlName); err != nil {
+		return actions, fmt.Errorf("绑定 interface %s 到 cdc_ether 失败: %w", controlName, err)
+	}
+	actions = append(actions, "bind:cdc_ether:"+controlName)
+	return actions, nil
+}
+
 func bindQMIInterfaceWithRetry(opts WSLUSBPrepareOptions, qmiInterface, interfaceName string) error {
 	bindPath := filepath.Join(opts.USBDriversPath, "qmi_wwan", "bind")
+	return bindInterfaceWithRetry(opts, bindPath, qmiInterface, interfaceName, "qmi_wwan")
+}
+
+func bindECMInterfaceWithRetry(opts WSLUSBPrepareOptions, ecmInterface, interfaceName string) error {
+	bindPath := filepath.Join(opts.USBDriversPath, "cdc_ether", "bind")
+	return bindInterfaceWithRetry(opts, bindPath, ecmInterface, interfaceName, "cdc_ether")
+}
+
+func bindInterfaceWithRetry(opts WSLUSBPrepareOptions, bindPath, interfacePath, interfaceName, expectedDriver string) error {
 	waitUntil := time.Now().Add(1200 * time.Millisecond)
 	var lastErr error
 
 	for {
-		if readUSBInterfaceDriver(qmiInterface) == "qmi_wwan" {
+		if readUSBInterfaceDriver(interfacePath) == expectedDriver {
 			return nil
 		}
 		err := opts.SysfsWrite(bindPath, interfaceName)
@@ -226,13 +274,13 @@ func bindQMIInterfaceWithRetry(opts WSLUSBPrepareOptions, qmiInterface, interfac
 		if !isNotBoundSysfsError(err) || time.Now().After(waitUntil) {
 			break
 		}
-		if readUSBInterfaceDriver(qmiInterface) == "qmi_wwan" {
+		if readUSBInterfaceDriver(interfacePath) == expectedDriver {
 			return nil
 		}
 		opts.Sleep(100 * time.Millisecond)
 	}
 
-	if readUSBInterfaceDriver(qmiInterface) == "qmi_wwan" {
+	if readUSBInterfaceDriver(interfacePath) == expectedDriver {
 		return nil
 	}
 	return lastErr
@@ -260,6 +308,11 @@ func summarizePreparedBaiwangDevices(roots []string) []WSLUSBPreparedDevice {
 
 func anyBaiwangDeviceReady(devices []WSLUSBPreparedDevice) bool {
 	for _, dev := range devices {
+		if dev.DriverName == "cdc_ether" &&
+			strings.TrimSpace(dev.NetInterface) != "" &&
+			len(dev.ATPorts) > 0 {
+			return true
+		}
 		if strings.TrimSpace(dev.ControlPath) != "" &&
 			strings.TrimSpace(dev.NetInterface) != "" &&
 			len(dev.ATPorts) > 0 {
@@ -267,6 +320,32 @@ func anyBaiwangDeviceReady(devices []WSLUSBPreparedDevice) bool {
 		}
 	}
 	return false
+}
+
+func isBaiwangECMTopology(usbPath string) bool {
+	usbName := filepath.Base(usbPath)
+	controlInterface := filepath.Join(usbPath, usbName+":1.4")
+	dataInterface := filepath.Join(usbPath, usbName+":1.5")
+	return readUSBInterfaceClass(controlInterface) == "02" &&
+		readUSBInterfaceSubClass(controlInterface) == "06" &&
+		readUSBInterfaceClass(dataInterface) == "0a"
+}
+
+func anyBaiwangECMTopology(roots []string) bool {
+	for _, usbPath := range roots {
+		if isBaiwangECMTopology(usbPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func readUSBInterfaceClass(ifPath string) string {
+	return strings.ToLower(strings.TrimSpace(readTextFile(filepath.Join(ifPath, "bInterfaceClass"))))
+}
+
+func readUSBInterfaceSubClass(ifPath string) string {
+	return strings.ToLower(strings.TrimSpace(readTextFile(filepath.Join(ifPath, "bInterfaceSubClass"))))
 }
 
 func readUSBInterfaceDriver(ifPath string) string {

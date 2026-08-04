@@ -131,6 +131,12 @@ type Manager struct {
 	rdyMu   sync.Mutex
 	rdySubs []chan struct{}
 
+	// 状态型 URC 降噪：只影响日志和重复 READY 兜底广播，不阻断业务分发。
+	urcStateMu       sync.Mutex
+	lastURCState     map[string]string
+	lastCPINState    string
+	hasLastCPINState bool
+
 	// APDU 仲裁（设备级全局）
 	apduArbiter  *apduarbiter.Arbiter
 	apduLeaseMu  sync.Mutex
@@ -1291,6 +1297,51 @@ func (m *Manager) dispatchSIMStatusURC(inserted *bool, state string) {
 	}
 }
 
+func (m *Manager) shouldLogURC(fr urcFormatResult) bool {
+	switch fr.Key {
+	case "+CREG", "+CGREG", "+CEREG", "+CPIN", "+QSIMSTAT":
+	default:
+		return true
+	}
+
+	signature := urcStateSignature(fr)
+	m.urcStateMu.Lock()
+	defer m.urcStateMu.Unlock()
+	if m.lastURCState == nil {
+		m.lastURCState = make(map[string]string)
+	}
+	if m.lastURCState[fr.Key] == signature {
+		return false
+	}
+	m.lastURCState[fr.Key] = signature
+	return true
+}
+
+func urcStateSignature(fr urcFormatResult) string {
+	var b strings.Builder
+	for i := 0; i+1 < len(fr.Fields); i += 2 {
+		key, _ := fr.Fields[i].(string)
+		if key == "" || key == "raw" {
+			continue
+		}
+		value := fr.Fields[i+1]
+		fmt.Fprintf(&b, "%s=%T:%v;", key, value, value)
+	}
+	return b.String()
+}
+
+func (m *Manager) shouldDispatchRDYForCPIN(state string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(state))
+	m.urcStateMu.Lock()
+	defer m.urcStateMu.Unlock()
+
+	previous := m.lastCPINState
+	hadPrevious := m.hasLastCPINState
+	m.lastCPINState = normalized
+	m.hasLastCPINState = true
+	return normalized == "READY" && (!hadPrevious || previous != "READY")
+}
+
 // handleURC 处理 URC
 func (m *Manager) handleURC(line string) {
 	s := strings.TrimSpace(line)
@@ -1300,13 +1351,15 @@ func (m *Manager) handleURC(line string) {
 
 	fr := m.formatURC(s)
 	msg := fmt.Sprintf("[%s] %s", m.cfg.ID, fr.Msg)
-	switch fr.Level {
-	case urcLogWarn:
-		logger.Warn(msg, fr.Fields...)
-	case urcLogInfo:
-		logger.Info(msg, fr.Fields...)
-	default:
-		logger.Debug(msg, fr.Fields...)
+	if m.shouldLogURC(fr) {
+		switch fr.Level {
+		case urcLogWarn:
+			logger.Warn(msg, fr.Fields...)
+		case urcLogInfo:
+			logger.Info(msg, fr.Fields...)
+		default:
+			logger.Debug(msg, fr.Fields...)
+		}
 	}
 
 	// 模组重启信号：广播给所有 SubscribeRDY() 的等待方。
@@ -1319,7 +1372,7 @@ func (m *Manager) handleURC(line string) {
 		for i := 0; i+1 < len(fr.Fields); i += 2 {
 			if k, _ := fr.Fields[i].(string); k == "state" {
 				state, _ = fr.Fields[i+1].(string)
-				if state == "READY" {
+				if m.shouldDispatchRDYForCPIN(state) {
 					m.dispatchRDY()
 				}
 				break

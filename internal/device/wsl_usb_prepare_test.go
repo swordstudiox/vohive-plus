@@ -171,6 +171,131 @@ func TestPrepareWSLUSBRecoversWhenQMIBindReportsTransientNoSuchDevice(t *testing
 	}
 }
 
+func TestPrepareWSLUSBPreparesBaiwangECMInterface(t *testing.T) {
+	root := t.TempDir()
+	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")
+	usbDrivers := filepath.Join(root, "sys", "bus", "usb", "drivers")
+	serialDrivers := filepath.Join(root, "sys", "bus", "usb-serial", "drivers")
+	devRoot := filepath.Join(root, "dev")
+	ecmControlInterface := filepath.Join(usbDevices, "1-1", "1-1:1.4")
+	ecmDataInterface := filepath.Join(usbDevices, "1-1", "1-1:1.5")
+
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idVendor"), "2ca3\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idProduct"), "4006\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.2", "tty", "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(ecmControlInterface, "bInterfaceClass"), "02\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmControlInterface, "bInterfaceSubClass"), "06\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmControlInterface, "bInterfaceProtocol"), "00\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmControlInterface, "driver"), "option\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmControlInterface, "net", "enx72175c718065"), "")
+	writeUSBPrepareFile(t, filepath.Join(ecmDataInterface, "bInterfaceClass"), "0a\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmDataInterface, "bInterfaceSubClass"), "00\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmDataInterface, "bInterfaceProtocol"), "00\n")
+	writeUSBPrepareFile(t, filepath.Join(ecmDataInterface, "driver"), "option\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "option", "unbind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "cdc_ether", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"), "2ca3 4006\n")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "ttyUSB2"), "")
+
+	var modules []string
+	var writes []string
+	got, err := PrepareWSLUSB(context.Background(), WSLUSBPrepareOptions{
+		USBDevicesPath:       usbDevices,
+		USBDriversPath:       usbDrivers,
+		USBSerialDriversPath: serialDrivers,
+		DevPath:              devRoot,
+		WaitTimeout:          time.Millisecond,
+		PollInterval:         time.Millisecond,
+		Modprobe: func(_ context.Context, module string) error {
+			modules = append(modules, module)
+			return nil
+		},
+		SysfsWrite: func(path, value string) error {
+			writes = append(writes, filepath.ToSlash(path)+"="+value)
+			if strings.HasSuffix(filepath.ToSlash(path), "/cdc_ether/bind") {
+				writeUSBPrepareFile(t, filepath.Join(ecmControlInterface, "driver"), "cdc_ether\n")
+				writeUSBPrepareFile(t, filepath.Join(ecmDataInterface, "driver"), "cdc_ether\n")
+			}
+			return writeSysfsValue(path, value)
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrepareWSLUSB() error = %v", err)
+	}
+	if !got.SupportedDeviceFound || !got.Prepared {
+		t.Fatalf("SupportedDeviceFound=%v Prepared=%v, want true true (%+v)", got.SupportedDeviceFound, got.Prepared, got)
+	}
+	if !reflect.DeepEqual(modules, []string{"usbserial", "option", "qmi_wwan", "cdc_wdm", "usbnet", "cdc_ether"}) {
+		t.Fatalf("modprobe modules=%v", modules)
+	}
+	if got.Devices[0].ControlPath != "" || got.Devices[0].NetInterface != "enx72175c718065" {
+		t.Fatalf("unexpected ECM summary: %+v", got.Devices[0])
+	}
+	if got.Devices[0].DriverName != "cdc_ether" {
+		t.Fatalf("DriverName=%q, want cdc_ether", got.Devices[0].DriverName)
+	}
+	if !containsWriteSuffix(writes, "/option/unbind=1-1:1.4") || !containsWriteSuffix(writes, "/option/unbind=1-1:1.5") {
+		t.Fatalf("ECM option unbind writes missing: %v", writes)
+	}
+	if !containsWriteSuffix(writes, "/cdc_ether/bind=1-1:1.4") {
+		t.Fatalf("cdc_ether bind write missing: %v", writes)
+	}
+	if containsWriteSuffix(writes, "/qmi_wwan/bind=1-1:1.4") {
+		t.Fatalf("ECM prepare must not bind qmi_wwan: %v", writes)
+	}
+}
+
+func TestPrepareWSLUSBIsIdempotentWhenECMAlreadyPrepared(t *testing.T) {
+	root := t.TempDir()
+	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")
+	usbDrivers := filepath.Join(root, "sys", "bus", "usb", "drivers")
+	serialDrivers := filepath.Join(root, "sys", "bus", "usb-serial", "drivers")
+	devRoot := filepath.Join(root, "dev")
+
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idVendor"), "2ca3\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idProduct"), "4006\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.2", "tty", "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "bInterfaceClass"), "02\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "bInterfaceSubClass"), "06\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "driver"), "cdc_ether\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "net", "enx72175c718065"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.5", "bInterfaceClass"), "0a\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.5", "driver"), "cdc_ether\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "option", "unbind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "cdc_ether", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"), "2ca3 4006\n")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "ttyUSB2"), "")
+
+	var writes []string
+	got, err := PrepareWSLUSB(context.Background(), WSLUSBPrepareOptions{
+		USBDevicesPath:       usbDevices,
+		USBDriversPath:       usbDrivers,
+		USBSerialDriversPath: serialDrivers,
+		DevPath:              devRoot,
+		WaitTimeout:          time.Millisecond,
+		PollInterval:         time.Millisecond,
+		Modprobe:             func(context.Context, string) error { return nil },
+		SysfsWrite: func(path, value string) error {
+			writes = append(writes, filepath.ToSlash(path)+"="+value)
+			return writeSysfsValue(path, value)
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrepareWSLUSB() error = %v", err)
+	}
+	if !got.Prepared {
+		t.Fatalf("PrepareWSLUSB() Prepared=false, got %+v", got)
+	}
+	if got.Devices[0].DriverName != "cdc_ether" || got.Devices[0].NetInterface != "enx72175c718065" {
+		t.Fatalf("unexpected ECM summary: %+v", got.Devices[0])
+	}
+	if len(writes) != 0 {
+		t.Fatalf("already prepared ECM should not write sysfs, got %v", writes)
+	}
+}
+
 func TestPrepareWSLUSBReportsNoSupportedDevice(t *testing.T) {
 	root := t.TempDir()
 	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")
@@ -206,4 +331,13 @@ func readUSBPrepareFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(b)
+}
+
+func containsWriteSuffix(writes []string, suffix string) bool {
+	for _, write := range writes {
+		if strings.HasSuffix(write, suffix) {
+			return true
+		}
+	}
+	return false
 }
