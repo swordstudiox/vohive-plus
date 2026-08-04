@@ -50,3 +50,15 @@
 
 - 在 WSL2 的 `/mnt/f` 这类 Windows 挂载盘上跑 `vue-tsc --noEmit` 会非常慢；本项目实测同一份 Web 类型检查在 WSL `/mnt/f` 约 204 秒，Windows 原生 Node 约 10 秒。不要把慢路径误判为 Vite 卡死。
 - Web 脚本应拆分“快速打包”和“完整发布校验”：日常 `npm run build` 只生成 `dist`，发布/CI 使用 `npm run build:check` 执行 `typecheck + build`，既保留质量门槛，也避免本地反复构建被类型检查拖慢。
+
+## 2026-08-04 QMI Proxy 回退
+
+- WSL2 便携部署不应假设系统安装了 libqmi 的 `/usr/libexec/qmi-proxy`。如果 QMI 控制口瞬时被探测流程占用，自动选择 `qmi-proxy` 但关闭 raw fallback，会把“缺少外部代理程序”升级成设备启动失败。
+- 区分“用户显式启用 qmi-proxy”和“程序自动选择 qmi-proxy”：显式模式保持严格，自动模式必须允许 `ProxyFallbackToRaw`，让无外部依赖的 WSL2 包能恢复到 raw QMI。
+- `AddWorkerFromConfig` 这类单设备启动流程不能把“是否需要 AT 兼容身份发现”建立在 `config.ListDevices()` 的全局状态上；全局配置会被其他测试或其他设备污染，导致完整托管 QMI 重绑被无关设备短路。
+- 大疆/Baiwang `QDC507` 在 WSL2 中可以通过 AT 口稳定读取 `ATI`、`AT+QCFG="usbnet"`、`CPIN/CEREG/QNWINFO`，即蜂窝注册和 AT 控制面可以是好的；这不等于 `/dev/cdc-wdm0` raw QMI 控制面也可用。
+- WSL USB/IP 下不要用 shell `cat < /dev/ttyUSB*` 这类方式读串口做诊断，打开/读取可能卡住并留下进程；优先通过项目的临时 AT API 或 Go 层带硬超时的串口探测。
+- 如果 WSL2 下 `qmi_wwan`、`cdc-wdm0`、`wwan0` 都存在但 QMI Core 长期 `context deadline exceeded`，应把它当作 USB/IP QMI 控制传输问题单独处理；候选路线包括打包可控的 qmi-proxy/libqmi 侧车、切换 ECM/MBIM 模式，或用 VirtualBox USB 直通验证是否为 WSL USB/IP 限制。
+- 添加设备弹窗里的“自动填充发现路径”和“用户选择后端”要分清阶段：选择硬件时可以给默认值，保存时只能刷新路径/IMEI，不能再次按发现结果重算并覆盖用户选择，否则用户选 AT 会被悄悄保存成 QMI。
+- 对 DJI/Baiwang `2ca3:4006` 这种在 WSL2 USB/IP 下 raw QMI 控制面超时、但 AT 口稳定可用的设备，发现到 AT 口时添加设备应默认 AT 后端；QMI 应作为后续数据面专项，而不是默认路径。
+- 单测不要硬编码真实 Linux 设备节点名（例如 `/dev/cdc-wdm0`、`/dev/ttyUSB2`）来制造“初始化失败”；当实机正好接入时测试会误打开真实硬件并变成环境相关。应使用明显不存在的 `/dev/vohive-test-*` 路径。

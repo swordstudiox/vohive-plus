@@ -114,3 +114,67 @@ func TestCollectRescanHardwarePopulatesNonQMIIMEIAndPaths(t *testing.T) {
 		t.Errorf("expected TransportType mbim, got %q", hw.TransportType)
 	}
 }
+
+func TestCollectRescanHardwareUsesCompatibleATIdentityForQMIWithoutRuntimePaths(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	raw := "devices:\n- id: wwan0\n  device_backend: qmi\n  modem_imei: \"863212060145346\"\n"
+	if err := os.WriteFile(configPath, []byte(raw), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := config.InitGlobalManager(configPath); err != nil {
+		t.Fatalf("InitGlobalManager() error = %v", err)
+	}
+
+	origDiscover := discoverQMIDevicesFn
+	discoverQMIDevicesFn = func() ([]QMIDevice, error) {
+		return []QMIDevice{{
+			ControlPath:  "/dev/cdc-wdm0",
+			NetInterface: "wwan0",
+			USBPath:      "/sys/bus/usb/devices/1-1",
+			ATPorts:      []string{"/dev/ttyUSB2"},
+			DriverName:   "qmi_wwan",
+		}}, nil
+	}
+	t.Cleanup(func() { discoverQMIDevicesFn = origDiscover })
+
+	origResolveQMI := resolveDiscoveredQMIDeviceFn
+	resolveDiscoveredQMIDeviceFn = func(dev QMIDevice, timeout time.Duration, allowIMEIProbe bool) (QMIDevice, string) {
+		return dev, ""
+	}
+	t.Cleanup(func() { resolveDiscoveredQMIDeviceFn = origResolveQMI })
+
+	origFallback := discoverFallbackModemsFn
+	discoverFallbackModemsFn = func() ([]CompatibleModem, error) {
+		return nil, nil
+	}
+	t.Cleanup(func() { discoverFallbackModemsFn = origFallback })
+
+	origResolveCompat := resolveDiscoveredCompatibleModemFn
+	resolveDiscoveredCompatibleModemFn = func(dev CompatibleModem, timeout time.Duration) (CompatibleModem, string) {
+		dev.ATPort = "/dev/ttyUSB2"
+		return dev, "863212060145346"
+	}
+	t.Cleanup(func() { resolveDiscoveredCompatibleModemFn = origResolveCompat })
+
+	p := &Pool{}
+
+	discovered, _ := discoverQMIDevicesFn()
+	hardware := p.collectRescanHardware(discovered, BuildWorkerDiscoveryIndex(nil, false))
+
+	if len(hardware) != 1 {
+		t.Fatalf("expected 1 hardware after merging compatible identity, got %d: %#v", len(hardware), hardware)
+	}
+	hw := hardware[0]
+	if hw.IMEI != "863212060145346" {
+		t.Fatalf("expected IMEI from compatible AT probe, got %q", hw.IMEI)
+	}
+	if hw.ControlPath != "/dev/cdc-wdm0" || hw.NetInterface != "wwan0" {
+		t.Fatalf("expected QMI attachment to be preserved, got %#v", hw)
+	}
+	if hw.ATPort != "/dev/ttyUSB2" {
+		t.Fatalf("expected AT port from compatible probe, got %q", hw.ATPort)
+	}
+	if hw.Mode != "qmi" || hw.TransportType != backend.BackendQMI {
+		t.Fatalf("expected QMI mode to be preserved, got mode=%q transport=%q", hw.Mode, hw.TransportType)
+	}
+}

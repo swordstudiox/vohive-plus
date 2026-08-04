@@ -72,9 +72,10 @@ func requiresQMICore(cfg config.DeviceConfig) bool {
 	if requiresMBIMCore(cfg) {
 		return false
 	}
-	return hasManagedQMINetwork(cfg) ||
-		resolvedBackendMode(cfg) != backend.BackendAT ||
-		config.NormalizeESIMTransport(cfg.ESIMTransport) == config.ESIMTransportQMI
+	if resolvedBackendMode(cfg) == backend.BackendQMI {
+		return true
+	}
+	return config.NormalizeESIMTransport(cfg.ESIMTransport) == config.ESIMTransportQMI
 }
 
 // needsATPortDiscovery 判断是否需要按 IMEI 反查 AT 端口:仅 AT 后端、且当前没有 AT
@@ -125,10 +126,13 @@ func resolveDiscoveredCompatibleModem(dev CompatibleModem, timeout time.Duration
 
 func configuredDevicesNeedCompatibleATDiscovery(devices []config.DeviceConfig) bool {
 	for _, dev := range devices {
-		if requiresQMICore(dev) {
+		if strings.TrimSpace(dev.ModemIMEI) == "" {
 			continue
 		}
-		if strings.TrimSpace(dev.ModemIMEI) == "" {
+		if requiresQMICore(dev) {
+			if !hasManagedQMINetwork(dev) {
+				return true
+			}
 			continue
 		}
 		if strings.TrimSpace(dev.ATPort) != "" || strings.TrimSpace(dev.ManagePort) != "" {
@@ -256,7 +260,7 @@ func (p *Pool) AddWorkerFromConfig(devCfg config.DeviceConfig) (*Worker, error) 
 	configuredIndex := BuildConfiguredDeviceIndex(config.ListDevices())
 	if !needsQMICore {
 		liveWorkerIndex := BuildWorkerDiscoveryIndex(p.GetAllWorkers(), true)
-		hardware := p.collectRescanHardware(nil, liveWorkerIndex)
+		hardware := p.collectRescanHardware(nil, liveWorkerIndex, []config.DeviceConfig{devCfg})
 		resolved := ResolveDeviceIdentities(hardware, []config.DeviceConfig{devCfg})
 
 		if len(resolved.Matched) > 0 {
@@ -298,7 +302,7 @@ func (p *Pool) AddWorkerFromConfig(devCfg config.DeviceConfig) (*Worker, error) 
 			if qmiErr != nil {
 				logger.Debug("QMI 静态路径启动前发现失败", "device", devCfg.ID, "err", qmiErr)
 			} else {
-				hardware := p.collectRescanHardware(qmiList, liveWorkerIndex)
+				hardware := p.collectRescanHardware(qmiList, liveWorkerIndex, []config.DeviceConfig{devCfg})
 				resolved := ResolveDeviceIdentities(hardware, []config.DeviceConfig{devCfg})
 				if len(resolved.Matched) > 0 {
 					hw := resolved.Matched[0].Hardware
@@ -319,27 +323,49 @@ func (p *Pool) AddWorkerFromConfig(devCfg config.DeviceConfig) (*Worker, error) 
 		matched = &selected
 	} else if imei := strings.TrimSpace(devCfg.ModemIMEI); imei != "" {
 		if list, err := discoveryCache.Get(); err == nil {
-			for i := range list {
-				_, claimedByLive := liveWorkerIndex.Lookup(list[i].ControlPath, list[i].USBPath, list[i].NetInterface)
-				configuredID := configuredIndex.Lookup(list[i].ControlPath, list[i].USBPath, list[i].NetInterface, "")
-				if claimedByLive || (configuredID != "" && configuredID != devCfg.ID) {
-					continue
+			preferCompatibleAT := configuredDevicesNeedCompatibleATDiscovery([]config.DeviceConfig{devCfg})
+			if preferCompatibleAT {
+				hardware := p.collectRescanHardware(list, liveWorkerIndex, []config.DeviceConfig{devCfg})
+				resolved := ResolveDeviceIdentities(hardware, []config.DeviceConfig{devCfg})
+				if len(resolved.Matched) > 0 {
+					hw := resolved.Matched[0].Hardware
+					matched = &QMIDevice{
+						ControlPath:  strings.TrimSpace(hw.ControlPath),
+						NetInterface: hw.NetInterface,
+						USBPath:      hw.USBPath,
+						ATPort:       hw.ATPort,
+						ATPorts:      append([]string(nil), hw.ATPorts...),
+						AudioDevice:  hw.AudioDevice,
+						VendorID:     hw.VendorID,
+						ProductID:    hw.ProductID,
+						DriverName:   hw.DriverName,
+					}
 				}
-				allowQMIIMEIProbe := configuredID == ""
-				d, got := resolveDiscoveredQMIDeviceWithConfig(list[i], 1600*time.Millisecond, allowQMIIMEIProbe, devCfg)
-				if got == "" || !config.IMEIMatches(got, imei) {
-					continue
+			}
+			if matched == nil {
+				for i := range list {
+					_, claimedByLive := liveWorkerIndex.Lookup(list[i].ControlPath, list[i].USBPath, list[i].NetInterface)
+					configuredID := configuredIndex.Lookup(list[i].ControlPath, list[i].USBPath, list[i].NetInterface, "")
+					if claimedByLive || (configuredID != "" && configuredID != devCfg.ID) {
+						continue
+					}
+					allowQMIIMEIProbe := configuredID == "" &&
+						(!preferCompatibleAT || !qmiDeviceHasATPortCandidates(list[i]))
+					d, got := resolveDiscoveredQMIDeviceWithConfig(list[i], 1600*time.Millisecond, allowQMIIMEIProbe, devCfg)
+					if got == "" || !config.IMEIMatches(got, imei) {
+						continue
+					}
+					matched = &d
+					devCfg.Interface = d.NetInterface
+					devCfg.ControlDevice = d.ControlPath
+					devCfg.QMIDevice = d.ControlPath
+					if devCfg.USBPath == "" {
+						devCfg.USBPath = d.USBPath
+					}
+					devCfg.ATPort = d.ATPort
+					devCfg.ManagePort = d.ATPort
+					break
 				}
-				matched = &d
-				devCfg.Interface = d.NetInterface
-				devCfg.ControlDevice = d.ControlPath
-				devCfg.QMIDevice = d.ControlPath
-				if devCfg.USBPath == "" {
-					devCfg.USBPath = d.USBPath
-				}
-				devCfg.ATPort = d.ATPort
-				devCfg.ManagePort = d.ATPort
-				break
 			}
 		}
 		if matched == nil {

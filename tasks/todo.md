@@ -117,6 +117,57 @@
 - [x] 不破坏现有 Quectel/Sierra/QMI/MBIM 静态发现测试。
 - [x] `with_imei=1` 已在本机当前状态恢复成功；如后续再次超时，再作为 QMI/AT 稳定性单独任务处理。
 
+## 阶段 2C：DJI QMI 启动兼容性修复
+
+### 根因假设
+
+- [x] 用户日志显示自动选择 `qmi-proxy` 后失败，且 WSL 便携环境没有 `/usr/libexec/qmi-proxy`。
+- [x] 设备配置只持久化 `device_backend: qmi` 和 `modem_imei`，未持久化运行时 `control_device/interface/at_port`，启动时需要重新识别当前枚举路径。
+- [x] DJI 模块 raw QMI 身份探测可能超时，但同一 USB 拓扑中的 AT 口能读到 IMEI，因此只有 IMEI 的 QMI 配置应优先用兼容 AT 身份配对。
+- [x] 完整托管 QMI 配置在旧控制口消失后仍要保留按 QMI IMEI 重绑能力，不能被其他设备的全局 AT 回退需求短路。
+
+### 修复计划
+
+- [x] QMI proxy 自动选择时允许 raw fallback；用户显式 `qmi_use_proxy: true` 时保持严格 proxy。
+- [x] 只有 IMEI、缺少完整运行路径的 QMI 配置使用兼容 AT 身份发现，避免 DJI raw QMI 探测卡住启动。
+- [x] 为“全局配置污染导致托管 QMI 重绑失败”新增回归测试。
+- [x] 让 `AddWorkerFromConfig` 的硬件收集按当前设备配置判断 AT 回退，而不是依赖进程级全局配置。
+- [x] 重新编译 Linux 后端、同步桌面壳资源并部署到 WSL2。
+- [x] 实机验证不再出现 `qmi-proxy ... no such file` fatal，也不再因“未找到匹配 IMEI”或旧控制口不存在阻断启动。
+- [ ] 剩余问题：WSL2 USB/IP 下 `/dev/cdc-wdm0` raw QMI 控制面仍反复 `context deadline exceeded`，DMS/WMS 服务未就绪；需要评估 qmi-proxy 打包、ECM/MBIM 模式或 VirtualBox USB 直通路线。
+
+## 阶段 2D：DJI WSL2 下 AT 退路修复
+
+### 根因假设
+
+- [x] 最小 QMI 工具在停止后端后直接访问 `/dev/cdc-wdm0`，`CTL SYNC` 与 `CTL GET_VERSION_INFO` 仍超时，说明当前 WSL2 USB/IP 下 QMI 控制面本身不响应。
+- [x] 临时 `device_backend: at` 实机启动可以读取 IMEI、ICCID、运营商、LTE 频段与漫游注册状态，说明 AT 控制面可用。
+- [x] 但显式 AT 配置在兼容发现时被回填 `control_device/interface` 后，`requiresQMICore()` 又误判需要 QMI Core，导致 AT 退路仍被 QMI 超时噪声拖住。
+
+### 修复计划
+
+- [x] 调整 QMI Core 判定：显式 `device_backend: at` 时不因运行时发现到 `control_device/interface` 而启动 QMI Core。
+- [x] 增加回归测试：显式 AT + QMI 运行时路径不需要 QMI Core；旧配置无 backend 但有 control device 仍按 QMI 兼容。
+- [x] 重新运行 Go 设备/QMI 相关测试。
+- [x] 重新编译 Linux 后端并部署到 WSL2。
+- [x] 用正式配置验证 DJI 模块 AT 后端不再启动 QMI Core。
+- [x] 修复 Web 添加设备保存逻辑：保存时保留用户选择的后端模式，不再把用户选择的 AT 覆盖回 QMI。
+- [x] DJI/Baiwang `2ca3:4006` 在发现到 QMI 控制口且 AT 口可用时，添加设备默认选择 AT 后端，避免 WSL2 用户自然落入 raw QMI 超时路径。
+
+### 验证结果
+
+- [x] 当前 WSL `/opt/vohive/config/config.yaml` 已从 `device_backend: qmi` 切换为 `device_backend: at`，原配置已备份为 `/opt/vohive/config/config.yaml.bak-20260804-125939`。
+- [x] Windows 侧 `http://127.0.0.1:7575/ping` 返回 `pong`。
+- [x] `GET /api/devices` 显示 `wwan0 running=true healthy=true control_online=true physical_present=true worker_running=true radio_registered=true lifecycle_phase=online`，后端模式为 AT。
+- [x] 已读取到 DJI 模块身份与网络状态：IMEI `863212060145346`、ICCID `89441600001002274233`、运营商 `中国联通`、`LTE BAND 3`、信号约 `-57` 至 `-71 dBm`、注册状态 `5`（漫游）。
+- [x] `POST /api/devices/wwan0/actions/at` 发送 `AT+CPIN?` 返回 `+CPIN: READY`。
+- [x] `npm run test --prefix web` 通过，21 项前端测试全绿。
+- [x] `go test ./internal/device ./internal/qmi ./internal/api ./internal/db -count=1` 通过。
+- [x] `npm run build --prefix web` 通过，并已同步 `web/dist` 到 `internal/web/dist`。
+- [x] 已重新编译 `dist/vohive-open_linux_amd64`，同步到 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`，并部署到 WSL `/opt/vohive/bin/vohive`。
+- [x] `desktop` 下 `pnpm run build`、`desktop/src-tauri` 下 `cargo test`、`pnpm tauri build --debug` 通过；新版 debug exe 位于 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。
+- [ ] 剩余问题：WSL2 USB/IP 下 `/dev/cdc-wdm0` raw QMI 控制面仍 `context deadline exceeded`，QMI 数据面/代理能力需继续走 qmi-proxy/libqmi 侧车、ECM/MBIM 模式或 VirtualBox USB 直通专项。
+
 ## 阶段 2B：漫游开关正式功能
 
 ### 目标
@@ -423,3 +474,6 @@
 - 2026-08-04 阶段 6 发布前修正：用户指出 Go 测试输出仍显示旧根路径后，已确认并修复 `go.mod`、`web/go.mod`、内部 import、Makefile、Release workflow、Dockerfile 和 Dockerfile.github 中的项目根模块路径；当前 WSL2 Go 测试输出为 `github.com/swordstudiox/vohive-plus/...`。同时将 Web 构建拆分为快速 `build` 和完整 `build:check`，Release/Docker 继续使用完整校验，本地快速构建避免每次等待慢速 `vue-tsc`。
 - 2026-08-04 阶段 6 验证：`node --test tests/*.test.mjs` 3 项通过；`desktop` 下 `node --test tests/*.test.mjs` 5 项通过；`git diff --check` 通过但有 CRLF 提示；WSL2 `go test ./cmd/vohive ./internal/api ./internal/db ./internal/device -count=1` 通过；WSL2 `npm run test --prefix web` 17 项通过；WSL2 `npm run build --prefix web` 通过，耗时约 107 秒；WSL2 `npm run build:check --prefix web` 通过，耗时约 270 秒；`desktop` 下 `pnpm run build` 通过；`desktop/src-tauri` 下 `cargo test` 15 项通过。
 - 2026-08-04 阶段 6 推送状态：已创建提交 `8bd57b3 发布 VoHive Plus 1.0.0` 并推送到 `origin/main`；已创建并推送注释标签 `v1.0.0`，标签对象为 `06016fea...`，指向提交 `8bd57b3...`。`git ls-remote origin refs/heads/main` 返回 `8bd57b3...`，`git ls-remote origin refs/tags/v1.0.0` 返回 `06016fea...`。本机未安装 `gh`，GitHub API/普通 HTTPS 查询和浏览器控制不可用，因此未能在本环境直接确认 Actions/Release 页面产物。
+- 2026-08-04 大疆 QMI 连接修复：用户日志显示自动选择 `qmi-proxy` 后失败，错误为 `/usr/libexec/qmi-proxy` 不存在且 `qmi_proxy_fallback_to_raw=false`。实查 `/opt/vohive/config/config.yaml` 未显式配置 `qmi_use_proxy`，只有 `device_backend: qmi`，说明这是瞬时控制口持有者触发的自动 proxy 选择。已修改 QMI client options：显式用户开启 proxy 时保持严格 proxy；自动选择 proxy 时开启 `ProxyFallbackToRaw`，使缺少 `qmi-proxy` 的 WSL2 环境能回退 raw QMI。
+- 2026-08-04 大疆启动识别修复：针对只有 `device_backend: qmi` + `modem_imei` 的配置，启动时优先通过同 USB 拓扑的 AT 口确认 IMEI，再把当前 `/dev/cdc-wdm0`、`wwan0`、`/dev/ttyUSB2` 合回 QMI 设备，避免 DJI raw QMI 身份探测超时导致“未找到匹配 IMEI”。同时修复 `collectRescanHardware` 读取进程级全局配置导致完整托管 QMI 重绑被无关设备 AT 回退需求短路的测试顺序问题。
+- 2026-08-04 大疆实机验证：修复后二进制已部署到 WSL `/opt/vohive/bin/vohive` 并启动。`/ping` 返回 200；`/api/devices/discovered?with_imei=1` 返回 `imei=863212060145346`、`control_path=/dev/cdc-wdm0`、`net_interface=wwan0`、`at_port=/dev/ttyUSB2`、`configured=true`。启动早期 worker 可注册，但 raw QMI 持续超时后被健康阈值下线，最终 `/api/devices` 显示 `physical_present=true`、`worker_running=false`、`control_online=false`、`lifecycle_phase=usb_wait`、`lifecycle_reason=qmi_health_threshold`。AT 查询确认模块为 `Baiwang QDC507`，`AT+QCFG="usbnet"` 返回 `0`，SIM `READY`，`CEREG: 0,5`，`QNWINFO` 为 LTE/46001/Band 3。剩余问题是 WSL2 USB/IP 下 raw QMI 控制面仍 `context deadline exceeded`，需后续专项处理。

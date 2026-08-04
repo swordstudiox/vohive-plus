@@ -24,6 +24,7 @@ import { useDevicesStore } from '../stores/devices'
 import { debugCollector } from '../debug/collector'
 import { copyToClipboard } from '../utils/clipboard'
 import { isWwanQmiControlPath } from '../utils/deviceBackend'
+import { defaultBackendForDiscoveredDevice } from '../utils/deviceDiscovery'
 import { isControlOnline, isRecoveryPhase } from '../utils/deviceLifecycle'
 import { getMccMncIndex, isoToFlagEmoji, type MccMncRow } from '../utils/mcc-mnc'
 import type { CardPolicy, CarrierWebsheetInfo, DeviceConfigDTO, DeviceMgmtListItem, DeviceOverviewItem, DiscoveredDevice, ModemStatus, PNNRecord, RealtimeTrafficSnapshot } from '../types/api'
@@ -996,22 +997,21 @@ async function refreshDiscoveredForAdd() {
   }
 }
 
-function applyDiscoveredToAddConfig(d: DiscoveredDevice | null) {
+function applyDiscoveredToAddConfig(d: DiscoveredDevice | null, options: { preserveBackend?: boolean } = {}) {
   if (!d) return
+  const selectedBackend = addConfig.value.device_backend
   addConfig.value.interface = d.net_interface || ''
   addConfig.value.at_port = d.at_port || ''
   addConfig.value.control_device = d.control_path || ''
   addConfig.value.modem_imei = d.imei || ''
   addConfig.value.usb_path = d.usb_path || ''
 
-  const mode = String(d.mode || '').toLowerCase()
-  if (mode === 'mbim') {
-    addConfig.value.device_backend = 'mbim'
-  } else if (isWwanQmiControlPath(d.control_path) || (mode === 'qmi' && d.control_path)) {
-    addConfig.value.device_backend = 'qmi'
-  } else {
-    addConfig.value.device_backend = 'at'
+  if (options.preserveBackend && selectedBackend) {
+    addConfig.value.device_backend = selectedBackend
+    return
   }
+
+  addConfig.value.device_backend = defaultBackendForDiscoveredDevice(d)
 }
 
 function selectDiscoveredForAdd(d: DiscoveredDevice) {
@@ -1030,7 +1030,7 @@ async function addDevice() {
       ElMessage.warning('请选择一个未配置设备')
       return
     }
-    applyDiscoveredToAddConfig(addSelected.value)
+    applyDiscoveredToAddConfig(addSelected.value, { preserveBackend: true })
     const result = await devicesService.addManaged(addConfig.value)
     if (!result.ok) throw new Error(result.error.message || '添加失败')
     const warning = result.data.warning

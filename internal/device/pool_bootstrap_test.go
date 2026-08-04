@@ -1,9 +1,11 @@
 package device
 
 import (
+	"os"
 	"testing"
 	"time"
 
+	qmiq "github.com/iniwex5/quectel-qmi-go/pkg/qmi"
 	"github.com/stretchr/testify/require"
 	"github.com/swordstudiox/vohive-plus/internal/config"
 )
@@ -69,4 +71,107 @@ func TestAddWorkerQMIManagedRebindsByIMEIWhenControlDeviceGone(t *testing.T) {
 	// 简单断言，或者如果实在不行可以跳过严格断言。
 	// 但只要不是报 "设备控制口 ... 不存在，可能模块尚未重新枚举" 而是别的，就说明通过了早期验证。
 	require.NotContains(t, err.Error(), "设备控制口 /dev/nonexistent-control-old 不存在，可能模块尚未重新枚举")
+}
+
+func TestAddWorkerQMIManagedRebindIgnoresUnrelatedGlobalATDiscoveryNeed(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	raw := "devices:\n- id: unrelated-dji\n  device_backend: qmi\n  modem_imei: \"999999999999999\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(raw), 0o600))
+	require.NoError(t, config.InitGlobalManager(configPath))
+	t.Cleanup(func() {
+		resetPath := t.TempDir() + "/empty-config.yaml"
+		require.NoError(t, os.WriteFile(resetPath, []byte("devices: []\n"), 0o600))
+		require.NoError(t, config.InitGlobalManager(resetPath))
+	})
+
+	originalDiscover := discoverQMIDevicesFn
+	discoverQMIDevicesFn = func() ([]QMIDevice, error) {
+		return []QMIDevice{{
+			ControlPath:  "/dev/cdc-wdm-new-qmi",
+			NetInterface: "wwan-new",
+			USBPath:      "1-2.3",
+			ATPorts:      []string{"/dev/ttyUSB-new"},
+		}}, nil
+	}
+	t.Cleanup(func() { discoverQMIDevicesFn = originalDiscover })
+
+	qmiProbeCalled := false
+	originalResolveQMI := resolveDiscoveredQMIDeviceFn
+	resolveDiscoveredQMIDeviceFn = func(dev QMIDevice, timeout time.Duration, allowProbe bool) (QMIDevice, string) {
+		if dev.ControlPath == "/dev/cdc-wdm-new-qmi" && allowProbe {
+			qmiProbeCalled = true
+			return dev, "123456789012345"
+		}
+		return dev, ""
+	}
+	t.Cleanup(func() { resolveDiscoveredQMIDeviceFn = originalResolveQMI })
+
+	originalResolveCompat := resolveDiscoveredCompatibleModemFn
+	resolveDiscoveredCompatibleModemFn = func(dev CompatibleModem, timeout time.Duration) (CompatibleModem, string) {
+		return dev, ""
+	}
+	t.Cleanup(func() { resolveDiscoveredCompatibleModemFn = originalResolveCompat })
+
+	p := NewPool(&config.Config{})
+	_, err := p.AddWorkerFromConfig(config.DeviceConfig{
+		ID:            "managed-qmi",
+		DeviceBackend: "qmi",
+		ModemIMEI:     "123456789012345",
+		ControlDevice: "/dev/nonexistent-control-old",
+		Interface:     "wwan-old",
+		USBPath:       "1-9.9",
+	})
+
+	require.Error(t, err)
+	require.True(t, qmiProbeCalled, "managed QMI rebind must use the current device scope, not unrelated global AT discovery needs")
+	require.NotContains(t, err.Error(), "设备控制口 /dev/nonexistent-control-old 不存在，可能模块尚未重新枚举")
+}
+
+func TestAddWorkerQMIOnlyIMEIUsesCompatibleATIdentityWhenQMIProbeFails(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	raw := "devices:\n- id: wwan0\n  device_backend: qmi\n  modem_imei: \"863212060145346\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(raw), 0o600))
+	require.NoError(t, config.InitGlobalManager(configPath))
+
+	originalDiscover := discoverQMIDevicesFn
+	discoverQMIDevicesFn = func() ([]QMIDevice, error) {
+		return []QMIDevice{{
+			ControlPath:  "/dev/vohive-test-cdc-wdm-qmi",
+			NetInterface: "wwan0",
+			USBPath:      "/sys/bus/usb/devices/1-1",
+			ATPorts:      []string{"/dev/vohive-test-ttyUSB-at"},
+			DriverName:   "qmi_wwan",
+		}}, nil
+	}
+	t.Cleanup(func() { discoverQMIDevicesFn = originalDiscover })
+
+	originalQMIProbe := probeIMEIViaQMIFn
+	probeIMEIViaQMIFn = func(controlPath string, clientOptions qmiq.ClientOptions) (string, error) {
+		t.Fatalf("QMI IMEI probe should not run before compatible AT identity fallback for AT-capable QMI devices")
+		return "", nil
+	}
+	t.Cleanup(func() { probeIMEIViaQMIFn = originalQMIProbe })
+
+	originalFallback := discoverFallbackModemsFn
+	discoverFallbackModemsFn = func() ([]CompatibleModem, error) {
+		return nil, nil
+	}
+	t.Cleanup(func() { discoverFallbackModemsFn = originalFallback })
+
+	originalResolveCompat := resolveDiscoveredCompatibleModemFn
+	resolveDiscoveredCompatibleModemFn = func(dev CompatibleModem, timeout time.Duration) (CompatibleModem, string) {
+		dev.ATPort = "/dev/vohive-test-ttyUSB-at"
+		return dev, "863212060145346"
+	}
+	t.Cleanup(func() { resolveDiscoveredCompatibleModemFn = originalResolveCompat })
+
+	p := NewPool(&config.Config{})
+	_, err := p.AddWorkerFromConfig(config.DeviceConfig{
+		ID:            "wwan0",
+		DeviceBackend: "qmi",
+		ModemIMEI:     "863212060145346",
+	})
+
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "未找到匹配 IMEI 的设备")
 }

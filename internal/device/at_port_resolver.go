@@ -1,6 +1,7 @@
 package device
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -45,12 +46,42 @@ func orderedATPortCandidates(candidate string, atPorts []string) []string {
 // 返回第一个成功读到 IMEI 的端口；若全部失败，则返回空值。
 func ResolveATPortForDevice(candidate string, atPorts []string, timeout time.Duration) (atPort, imei string) {
 	for _, port := range orderedATPortCandidates(candidate, atPorts) {
-		imei, err := probeIMEICachedFn(port, timeout)
+		imei, err := probeIMEIForATPortWithBudget(port, timeout)
 		if err == nil && imei != "" {
 			return port, imei
 		}
 	}
 	return "", ""
+}
+
+func qmiDeviceHasATPortCandidates(dev QMIDevice) bool {
+	return len(orderedATPortCandidates(dev.ATPort, dev.ATPorts)) > 0
+}
+
+func probeIMEIForATPortWithBudget(port string, timeout time.Duration) (string, error) {
+	if timeout <= 0 {
+		timeout = 1500 * time.Millisecond
+	}
+
+	type result struct {
+		imei string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		imei, err := probeIMEICachedFn(port, timeout)
+		done <- result{imei: imei, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case got := <-done:
+		return got.imei, got.err
+	case <-timer.C:
+		return "", fmt.Errorf("imei probe deadline exceeded for %s", strings.TrimSpace(port))
+	}
 }
 
 func containsPort(ports []string, target string) bool {

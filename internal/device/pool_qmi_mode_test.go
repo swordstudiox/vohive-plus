@@ -149,6 +149,30 @@ func TestRequiresQMICoreForQMIBackend(t *testing.T) {
 	}
 }
 
+func TestRequiresQMICoreRespectsExplicitATBackendWithRuntimeQMIPaths(t *testing.T) {
+	cfg := config.DeviceConfig{
+		DeviceBackend: "at",
+		ControlDevice: "/dev/cdc-wdm0",
+		Interface:     "wwan0",
+		ATPort:        "/dev/ttyUSB2",
+	}
+
+	if requiresQMICore(cfg) {
+		t.Fatal("explicit at backend must not start QMI core even when runtime QMI paths are present")
+	}
+}
+
+func TestRequiresQMICoreKeepsLegacyControlDeviceAsQMI(t *testing.T) {
+	cfg := config.DeviceConfig{
+		ControlDevice: "/dev/cdc-wdm0",
+		Interface:     "wwan0",
+	}
+
+	if !requiresQMICore(cfg) {
+		t.Fatal("legacy config with control device and no explicit backend must still require QMI core")
+	}
+}
+
 type startupUIMResetterStub struct {
 	calls int
 	err   error
@@ -299,19 +323,20 @@ func TestNewWorkerBackendStrictDoesNotFallbackFromQMIToAT(t *testing.T) {
 	}
 }
 
-func TestConfiguredDevicesNeedCompatibleATDiscoverySkipsPureQMI(t *testing.T) {
+func TestConfiguredDevicesNeedCompatibleATDiscoverySkipsCompleteQMI(t *testing.T) {
 	devices := []config.DeviceConfig{
 		{
 			ID:            "dev-qmi",
 			DeviceBackend: backend.BackendQMI,
 			ModemIMEI:     "867123456789012",
 			ControlDevice: "/dev/cdc-wdm0",
+			Interface:     "wwan0",
 			ATPort:        "/dev/ttyUSB2",
 		},
 	}
 
 	if configuredDevicesNeedCompatibleATDiscovery(devices) {
-		t.Fatal("configuredDevicesNeedCompatibleATDiscovery() = true for pure QMI config, want false")
+		t.Fatal("configuredDevicesNeedCompatibleATDiscovery() = true for complete QMI attachment, want false")
 	}
 }
 
@@ -340,15 +365,14 @@ func TestRequiresQMICoreForQMIESIMTransport(t *testing.T) {
 	}
 }
 
-func TestRequiresQMICoreWhenManagedNetworkCapabilityExists(t *testing.T) {
+func TestRequiresQMICoreWhenLegacyManagedNetworkCapabilityExists(t *testing.T) {
 	cfg := config.DeviceConfig{
-		DeviceBackend: "at",
 		ControlDevice: "/dev/cdc-wdm0",
 		Interface:     "wwan0",
 	}
 
 	if !requiresQMICore(cfg) {
-		t.Fatal("expected managed QMI network capability to require QMI core")
+		t.Fatal("expected legacy managed QMI network capability to require QMI core")
 	}
 }
 

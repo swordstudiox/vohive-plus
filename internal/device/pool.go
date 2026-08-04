@@ -1405,11 +1405,17 @@ func (p *Pool) RescanAndReconnect() error {
 	return p.rescanAndReconnect(rescanReconnectOptions{})
 }
 
-func (p *Pool) collectRescanHardware(discovered []QMIDevice, liveWorkerIndex WorkerDiscoveryIndex) []CompatibleModem {
+func (p *Pool) collectRescanHardware(discovered []QMIDevice, liveWorkerIndex WorkerDiscoveryIndex, managedOverride ...[]config.DeviceConfig) []CompatibleModem {
 	var hardware []CompatibleModem
+	managed := config.ListDevices()
+	if len(managedOverride) > 0 {
+		managed = managedOverride[0]
+	}
+	needCompatibleAT := configuredDevicesNeedCompatibleATDiscovery(managed)
 	for i := range discovered {
 		raw := discovered[i]
 		var imei string
+		allowQMIProbe := !needCompatibleAT || !qmiDeviceHasATPortCandidates(raw)
 		if liveInfo, ok := liveWorkerIndex.Lookup(raw.ControlPath, raw.USBPath, raw.NetInterface); ok {
 			if containsPort(raw.ATPorts, liveInfo.ATPort) {
 				raw.ATPort = liveInfo.ATPort
@@ -1417,10 +1423,10 @@ func (p *Pool) collectRescanHardware(discovered []QMIDevice, liveWorkerIndex Wor
 			if liveInfo.IMEI != "" {
 				imei = liveInfo.IMEI
 				logger.Debug("扫描到设备", "imei", liveInfo.IMEI, "interface", raw.NetInterface, "at", raw.ATPort)
-			} else {
+			} else if allowQMIProbe {
 				raw, imei = resolveDiscoveredQMIDeviceFn(raw, 1600*time.Millisecond, true)
 			}
-		} else {
+		} else if allowQMIProbe {
 			raw, imei = resolveDiscoveredQMIDeviceFn(raw, 1600*time.Millisecond, true)
 		}
 		hardware = append(hardware, CompatibleModem{
@@ -1434,8 +1440,7 @@ func (p *Pool) collectRescanHardware(discovered []QMIDevice, liveWorkerIndex Wor
 		})
 	}
 
-	managed := config.ListDevices()
-	if configuredDevicesNeedCompatibleATDiscovery(managed) {
+	if needCompatibleAT {
 		if compatList, err := DiscoverCompatibleModemsFromQMI(discovered); err == nil {
 			seen := map[string]bool{}
 			for _, hw := range hardware {
@@ -1452,11 +1457,56 @@ func (p *Pool) collectRescanHardware(discovered []QMIDevice, liveWorkerIndex Wor
 					continue
 				}
 				m.IMEI = imei
-				hardware = append(hardware, m)
+				hardware = mergeCompatibleRescanHardware(hardware, m)
+				seen[config.NormalizeIMEI(imei)] = true
 			}
 		}
 	}
 	return hardware
+}
+
+func sameRescanAttachment(a, b CompatibleModem) bool {
+	if v := strings.TrimSpace(a.ControlPath); v != "" && v == strings.TrimSpace(b.ControlPath) {
+		return true
+	}
+	if v := strings.TrimSpace(a.USBPath); v != "" && v == strings.TrimSpace(b.USBPath) {
+		return true
+	}
+	if v := strings.TrimSpace(a.NetInterface); v != "" && v == strings.TrimSpace(b.NetInterface) {
+		return true
+	}
+	return false
+}
+
+func mergeCompatibleRescanHardware(hardware []CompatibleModem, compat CompatibleModem) []CompatibleModem {
+	for i := range hardware {
+		if !sameRescanAttachment(hardware[i], compat) {
+			continue
+		}
+		if strings.TrimSpace(hardware[i].IMEI) == "" {
+			hardware[i].IMEI = strings.TrimSpace(compat.IMEI)
+		}
+		if strings.TrimSpace(hardware[i].ATPort) == "" {
+			hardware[i].ATPort = strings.TrimSpace(compat.ATPort)
+		}
+		if len(hardware[i].ATPorts) == 0 {
+			hardware[i].ATPorts = compat.ATPorts
+		}
+		if strings.TrimSpace(hardware[i].AudioDevice) == "" {
+			hardware[i].AudioDevice = strings.TrimSpace(compat.AudioDevice)
+		}
+		if strings.TrimSpace(hardware[i].Mode) == "" {
+			hardware[i].Mode = strings.TrimSpace(compat.Mode)
+		}
+		if strings.TrimSpace(hardware[i].TransportType) == "" {
+			hardware[i].TransportType = strings.TrimSpace(compat.TransportType)
+		}
+		if !hardware[i].NetworkCapable {
+			hardware[i].NetworkCapable = compat.NetworkCapable
+		}
+		return hardware
+	}
+	return append(hardware, compat)
 }
 
 func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {

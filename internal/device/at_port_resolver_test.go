@@ -100,3 +100,27 @@ func TestResolveATPortForDeviceFallsBackToCandidateWhenNoATPortsList(t *testing.
 		t.Fatalf("probed=%v want=%v", probed, []string{"/dev/ttyUSB9"})
 	}
 }
+
+func TestResolveATPortForDeviceBoundsSlowProbePerPort(t *testing.T) {
+	orig := probeIMEICachedFn
+	defer func() { probeIMEICachedFn = orig }()
+
+	probeIMEICachedFn = func(atPort string, timeout time.Duration) (string, error) {
+		if atPort == "/dev/ttyUSB2" {
+			time.Sleep(200 * time.Millisecond)
+			return "", fmt.Errorf("slow port")
+		}
+		return "imei-b", nil
+	}
+
+	start := time.Now()
+	atPort, imei := ResolveATPortForDevice("", []string{"/dev/ttyUSB2", "/dev/ttyUSB3"}, 30*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if atPort != "/dev/ttyUSB3" || imei != "imei-b" {
+		t.Fatalf("ResolveATPortForDevice()=(%q,%q) want=(%q,%q)", atPort, imei, "/dev/ttyUSB3", "imei-b")
+	}
+	if elapsed > 150*time.Millisecond {
+		t.Fatalf("ResolveATPortForDevice() elapsed=%s, slow first port should be bounded by per-port timeout", elapsed)
+	}
+}

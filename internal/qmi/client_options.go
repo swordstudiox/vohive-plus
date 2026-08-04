@@ -88,6 +88,7 @@ func qmiTransportName(useProxy bool) string {
 
 type qmiTransportDecision struct {
 	UseProxy             bool
+	ExplicitProxy        bool
 	ControlDeviceScanned bool
 	HolderCount          int
 	HolderScanUnknown    bool
@@ -113,6 +114,7 @@ func decideQMITransport(cfg config.DeviceConfig, backend string) qmiTransportDec
 
 	if cfg.QMIUseProxy {
 		decision.UseProxy = true
+		decision.ExplicitProxy = true
 		return decision
 	}
 	if backend == "qmi" &&
@@ -129,6 +131,7 @@ func applyQMITransportDecision(opts *qmiq.ClientOptions, decision qmiTransportDe
 	}
 	if decision.UseProxy {
 		forceProxy(opts)
+		opts.ProxyFallbackToRaw = !decision.ExplicitProxy
 		return
 	}
 	opts.UseProxy = false

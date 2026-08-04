@@ -85,8 +85,8 @@ func TestClientOptionsFromDeviceConfigUsesProxyForQMIBackendWhenControlDeviceHas
 	if !opts.UseProxy {
 		t.Fatal("UseProxy=false, want true when qmi control device has holders")
 	}
-	if opts.ProxyFallbackToRaw {
-		t.Fatal("ProxyFallbackToRaw=true, want no raw fallback when holders are present")
+	if !opts.ProxyFallbackToRaw {
+		t.Fatal("ProxyFallbackToRaw=false, want raw fallback when proxy was selected automatically")
 	}
 }
 
@@ -105,8 +105,8 @@ func TestClientOptionsFromDeviceConfigUsesProxyWhenHolderScanUnknown(t *testing.
 	if !opts.UseProxy {
 		t.Fatal("UseProxy=false, want true when qmi holder scan is unknown")
 	}
-	if opts.ProxyFallbackToRaw {
-		t.Fatal("ProxyFallbackToRaw=true, want no raw fallback when scan is unknown")
+	if !opts.ProxyFallbackToRaw {
+		t.Fatal("ProxyFallbackToRaw=false, want raw fallback when proxy was selected automatically")
 	}
 }
 
@@ -191,8 +191,8 @@ func TestClientOpenModeSummaryReportsProxy(t *testing.T) {
 	if got["qmi_control_holder_count"] != 1 {
 		t.Fatalf("qmi_control_holder_count=%v, want 1", got["qmi_control_holder_count"])
 	}
-	if got["qmi_proxy_fallback_to_raw"] != false {
-		t.Fatalf("qmi_proxy_fallback_to_raw=%v, want false", got["qmi_proxy_fallback_to_raw"])
+	if got["qmi_proxy_fallback_to_raw"] != true {
+		t.Fatalf("qmi_proxy_fallback_to_raw=%v, want true", got["qmi_proxy_fallback_to_raw"])
 	}
 	if got["qmi_proxy_path"] != "@qmi-proxy" {
 		t.Fatalf("qmi_proxy_path=%v, want @qmi-proxy", got["qmi_proxy_path"])
