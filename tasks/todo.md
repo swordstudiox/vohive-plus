@@ -575,9 +575,9 @@
 ### 目标
 
 - [x] `dist/`、Tauri `target/` 和桌面内置 Linux 后端二进制都不再进入 Git 跟踪。
-- [ ] 本地可达历史和远程 `origin/main` 不再包含 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`。
-- [ ] 远程 `v1.0.0` tag 同步到清理后的历史。
-- [ ] 桌面构建仍能在构建前获得 Linux 后端资源，不依赖仓库提交大二进制。
+- [x] 本地可达历史和远程 `origin/main` 不再包含 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`。
+- [x] 远程 `v1.0.0` tag 同步到清理后的历史。
+- [x] 桌面构建仍能在构建前获得 Linux 后端资源，不依赖仓库提交大二进制。
 - [x] 用户已确认执行历史清理；允许重写本地未推送历史，并对 `origin/main` 与 `v1.0.0` tag 执行 force push。
 
 ### 推荐方案
@@ -597,8 +597,8 @@
 - [x] 运行桌面脚本测试和相关配置测试。
 - [x] 重写本地可达历史，移除已跟踪二进制路径。
 - [x] 清理本地旧引用与不可达大对象。
-- [ ] 通过代理推送 `origin/main` 和 `v1.0.0` tag。
-- [ ] 验证远程 `main` 和 tag 已指向清理后的提交。
+- [x] 通过代理推送 `origin/main` 和 `v1.0.0` tag。
+- [x] 验证远程 `main` 和 tag 已指向清理后的提交。
 
 ## 评审记录
 
@@ -637,3 +637,4 @@
 - 2026-08-04 大疆实机验证：修复后二进制已部署到 WSL `/opt/vohive/bin/vohive` 并启动。`/ping` 返回 200；`/api/devices/discovered?with_imei=1` 返回 `imei=863212060145346`、`control_path=/dev/cdc-wdm0`、`net_interface=wwan0`、`at_port=/dev/ttyUSB2`、`configured=true`。启动早期 worker 可注册，但 raw QMI 持续超时后被健康阈值下线，最终 `/api/devices` 显示 `physical_present=true`、`worker_running=false`、`control_online=false`、`lifecycle_phase=usb_wait`、`lifecycle_reason=qmi_health_threshold`。AT 查询确认模块为 `Baiwang QDC507`，`AT+QCFG="usbnet"` 返回 `0`，SIM `READY`，`CEREG: 0,5`，`QNWINFO` 为 LTE/46001/Band 3。剩余问题是 WSL2 USB/IP 下 raw QMI 控制面仍 `context deadline exceeded`，需后续专项处理。
 - 2026-08-04 阶段 2H URC 日志降噪：重复刷屏根因是后端每分钟收到同值 `+QSIMSTAT/+CPIN/+CREG` 仍按 INFO 输出，且重复 `+CPIN: READY` 会再次广播 RDY 触发设备池日志。已在 modem 层新增状态型 URC 签名缓存，只抑制日志和重复 READY 兜底广播，不阻断 SIM 状态 handler、短信、USSD、来电等业务分发。验证：`go test ./internal/modem -count=1` 与 `go test ./internal/api ./internal/device ./internal/modem -count=1` 通过；新二进制已部署到桌面资源和 WSL `/opt/vohive/bin/vohive`；实机日志显示 17:03:45 重启后只记录首次状态和 `CREG 5 -> 2 -> 5` 真实变化，不再按分钟重复 `QSIMSTAT/CPIN/Modem RDY/CREG=5`。
 - 2026-08-04 阶段 4K 桌面内置后端二进制去 Git 跟踪：`desktop/src-tauri/resources/vohive/vohive-open_linux_amd64` 已从 Git 索引移除并加入 `.gitignore`，本地文件保留；新增 `desktop/scripts/sync-backend-resource.mjs`，Tauri dev/build 前自动从 `dist/vohive-open_linux_amd64` 同步或复用 CI 已复制的资源。验证：桌面 Node 测试通过，`git ls-files` 已查不到三个大二进制路径，`git check-ignore` 均命中忽略规则。
+- 2026-08-04 阶段 4K 历史清理完成：用户确认后，已用历史重写从本地可达 refs 中移除 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`；删除 `refs/original/*`、过期 reflog 并执行 GC 后，`git rev-list --objects --all` 与 `git log --all -- desktop/src-tauri/resources/vohive/vohive-open_linux_amd64` 均无输出，`git count-objects -vH` 显示 pack 约 2.55 MiB。通过 `http://127.0.0.1:10808` 代理和 `http.sslBackend=openssl` 推送远程：`origin/main` force update 到 `8b0eee2d742b52dc014ada85678712cbcaa0cc86`，`v1.0.0` tag force update 到 tag object `12c1fbcff35ba32a8b5b880a0eeb172affc55cc5`，指向提交 `87e0f1108c47fe9ea032da6ee33f92dbc2fce42f`。已用 `git ls-remote` 通过代理确认远程 refs 一致。
