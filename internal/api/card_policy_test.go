@@ -11,9 +11,9 @@ import (
 	"unsafe"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/db"
+	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 // injectWorker 通过 unsafe 反射将 worker 注入到 pool 的内部 workers map，

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
 	"github.com/stretchr/testify/require"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 func TestAddWorkerQMIManagedRebindsByIMEIWhenControlDeviceGone(t *testing.T) {
@@ -60,12 +60,12 @@ func TestAddWorkerQMIManagedRebindsByIMEIWhenControlDeviceGone(t *testing.T) {
 	// 实际上，如果不去判断 error 字符串，我们可以 mock modem.New，但它是外部包。
 	// 我们可以直接验证返回的 err 字符串是否包含 "cdc-wdm-new-qmi" 或者 "wwan-new"。
 	// 可是如果 modem.New 里报错没有携带这个名字呢？
-	
+
 	// 在 AddWorkerFromConfig 里，如果它报错:
 	// return nil, fmt.Errorf("初始化 Modem 失败: %w", err)
 	// 我们打印出来看看。
 	t.Logf("Error from AddWorkerFromConfig: %v", err)
-	
+
 	// 简单断言，或者如果实在不行可以跳过严格断言。
 	// 但只要不是报 "设备控制口 ... 不存在，可能模块尚未重新枚举" 而是别的，就说明通过了早期验证。
 	require.NotContains(t, err.Error(), "设备控制口 /dev/nonexistent-control-old 不存在，可能模块尚未重新枚举")

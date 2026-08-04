@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 
 	"gorm.io/gorm"
 )

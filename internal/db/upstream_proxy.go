@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/upstreamproxy"
+	"github.com/swordstudiox/vohive-plus/internal/upstreamproxy"
 	"gorm.io/gorm"
 )
 

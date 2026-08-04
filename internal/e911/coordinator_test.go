@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/modem"
 	runtimee911 "github.com/iniwex5/vowifi-go/runtimehost/e911"
+	"github.com/swordstudiox/vohive-plus/internal/modem"
 )
 
 func TestCoordinatorDoesNotRunEntitlementProbes(t *testing.T) {

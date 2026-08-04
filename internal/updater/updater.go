@@ -4,7 +4,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/iniwex5/vohive/internal/global"
+	"github.com/swordstudiox/vohive-plus/internal/global"
 )
 
 var ErrDisabled = errors.New("in-app binary updates are disabled for this source-integrated build")

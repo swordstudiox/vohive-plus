@@ -15,14 +15,14 @@ import (
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/cardpolicy"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/esim"
-	qmicore "github.com/iniwex5/vohive/internal/qmi"
-	"github.com/iniwex5/vohive/internal/vowifihost"
-	"github.com/iniwex5/vohive/pkg/logger"
 	"github.com/iniwex5/vowifi-go/runtimehost"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	"github.com/swordstudiox/vohive-plus/internal/cardpolicy"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/esim"
+	qmicore "github.com/swordstudiox/vohive-plus/internal/qmi"
+	"github.com/swordstudiox/vohive-plus/internal/vowifihost"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 type esimSwitchRestoreBackendStub struct {

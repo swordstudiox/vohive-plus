@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	qmicore "github.com/iniwex5/vohive/internal/qmi"
-	"github.com/iniwex5/vohive/pkg/logger"
+	qmicore "github.com/swordstudiox/vohive-plus/internal/qmi"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 // CompatibleModem 描述可接管的 modem（QMI + 非QMI）。

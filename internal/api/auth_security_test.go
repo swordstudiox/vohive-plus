@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // 登录限流必须按真实客户端 IP 计数，而不是按客户端可随意伪造的
@@ -28,7 +28,7 @@ func TestLoginRateLimitIgnoresSpoofedForwardedFor(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.0.0.%d", i)) // 每次伪造不同的来源 IP
-		req.RemoteAddr = "192.0.2.1:54321"                              // 真实连接对端始终相同
+		req.RemoteAddr = "192.0.2.1:54321"                             // 真实连接对端始终相同
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusUnauthorized {

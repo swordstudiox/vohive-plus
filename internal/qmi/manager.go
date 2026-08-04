@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/netprobe"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/internal/apduarbiter"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/netprobe"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/iniwex5/quectel-qmi-go/pkg/netcfg"

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/esim"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	"github.com/swordstudiox/vohive-plus/internal/esim"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 var postSwitchSIMAuthRecoveryDelays = []time.Duration{

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 func TestValidateDeviceBackendConfigMBIM(t *testing.T) {

@@ -1,6 +1,6 @@
 package db
 
-import "github.com/iniwex5/vohive/internal/cardpolicy"
+import "github.com/swordstudiox/vohive-plus/internal/cardpolicy"
 
 // CardPolicyResolver 用 DB 实现 cardpolicy.Resolver。
 type CardPolicyResolver struct{}

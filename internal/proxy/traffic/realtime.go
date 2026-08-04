@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 const (

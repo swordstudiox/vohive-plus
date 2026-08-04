@@ -3,7 +3,7 @@ package repo
 import (
 	"context"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 type ProxyInstanceRepository interface {

@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/iniwex5/vohive/pkg/mbim"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
 )
 
 func TestManagerVisibleProvidersAndSetRegisterDelegate(t *testing.T) {

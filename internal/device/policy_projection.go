@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/cardpolicy"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	"github.com/swordstudiox/vohive-plus/internal/cardpolicy"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 // applyPolicyToWorker 把卡策略投影进 worker.Config 的运行时有效字段。

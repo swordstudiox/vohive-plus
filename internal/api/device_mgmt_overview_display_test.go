@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // 重构后策略字段(network/vowifi/airplane/ip/apn/sms)只存在于运行时投影(w.Config)，

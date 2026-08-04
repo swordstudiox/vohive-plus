@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // 零路径持久化后,持久化 config 不再含 control_device/interface 等路径;

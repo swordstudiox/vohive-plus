@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/iniwex5/vohive/internal/modem"
+	"github.com/swordstudiox/vohive-plus/internal/modem"
 )
 
 // ModemChannel 实现 euicc-go 的 driver.SmartCardChannel 接口

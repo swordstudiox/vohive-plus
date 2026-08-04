@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/websheet"
+	"github.com/swordstudiox/vohive-plus/internal/websheet"
 )
 
 func (s *Server) registerWebsheetRoutes(api *gin.RouterGroup) {

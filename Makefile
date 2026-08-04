@@ -8,7 +8,7 @@ BUILD_TIME ?= $(shell date "+%Y-%m-%d %H:%M:%S")
 DIST_DIR ?= dist
 MAIN_PACKAGE ?= ./cmd/vohive
 
-LDFLAGS = -s -w -X 'github.com/iniwex5/vohive/internal/global.Version=$(VERSION)' -X 'github.com/iniwex5/vohive/internal/global.BuildTime=$(BUILD_TIME)'
+LDFLAGS = -s -w -X 'github.com/swordstudiox/vohive-plus/internal/global.Version=$(VERSION)' -X 'github.com/swordstudiox/vohive-plus/internal/global.BuildTime=$(BUILD_TIME)'
 GO_BUILD = go build -trimpath -buildvcs=false -tags "$(GO_TAGS)" -ldflags "$(LDFLAGS)"
 
 AMD64_OUT = $(DIST_DIR)/$(BINARY_NAME)_$(VERSION_TAG)_linux_amd64

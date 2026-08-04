@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/mbim"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
 )
 
 // OnRecoveryExhausted registers a callback fired when host-side control-plane

@@ -15,19 +15,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/api"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/internal/notify"
-	proxyserver "github.com/iniwex5/vohive/internal/proxy/server"
-	"github.com/iniwex5/vohive/internal/proxy/traffic"
-	"github.com/iniwex5/vohive/internal/upstreamproxy"
 	"github.com/iniwex5/vowifi-go/runtimehost/carrier"
 	"github.com/iniwex5/vowifi-go/runtimehost/voicehost"
+	"github.com/swordstudiox/vohive-plus/internal/api"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/db"
+	"github.com/swordstudiox/vohive-plus/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/notify"
+	proxyserver "github.com/swordstudiox/vohive-plus/internal/proxy/server"
+	"github.com/swordstudiox/vohive-plus/internal/proxy/traffic"
+	"github.com/swordstudiox/vohive-plus/internal/upstreamproxy"
 
-	"github.com/iniwex5/vohive/internal/web"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/internal/web"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 func main() {

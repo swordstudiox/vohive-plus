@@ -6,8 +6,8 @@ import (
 	"github.com/damonto/euicc-go/bertlv"
 	"github.com/damonto/euicc-go/bertlv/primitive"
 	"github.com/damonto/euicc-go/lpa"
-	"github.com/iniwex5/vohive/internal/esim/pki"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/internal/esim/pki"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 type euiccInfoReader interface {

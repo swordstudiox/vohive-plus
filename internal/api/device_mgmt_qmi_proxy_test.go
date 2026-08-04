@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 func TestDeviceConfigDTOPreservesQMIProxyFields(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/internal/proxy/server"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/internal/db"
+	"github.com/swordstudiox/vohive-plus/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/proxy/server"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 const (

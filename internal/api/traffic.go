@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/db"
+	"github.com/swordstudiox/vohive-plus/internal/db"
 
 	"github.com/gin-gonic/gin"
 )

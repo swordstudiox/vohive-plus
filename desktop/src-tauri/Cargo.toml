@@ -1,6 +1,6 @@
 [package]
 name = "vohive-plus-desktop"
-version = "0.1.0"
+version = "1.0.0"
 description = "VoHive Plus Windows desktop shell"
 authors = ["VoHive Plus"]
 license = "PolyForm-Noncommercial-1.0.0"
@@ -17,4 +17,3 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
-

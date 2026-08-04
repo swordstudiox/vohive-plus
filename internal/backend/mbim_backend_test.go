@@ -7,8 +7,8 @@ import (
 	"time"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/vohive/pkg/mbim"
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
+	"github.com/swordstudiox/vohive-plus/pkg/smscodec"
 	"github.com/warthog618/sms/encoding/tpdu"
 )
 

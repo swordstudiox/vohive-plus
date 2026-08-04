@@ -1,6 +1,6 @@
 package api
 
-import "github.com/iniwex5/vohive/internal/config"
+import "github.com/swordstudiox/vohive-plus/internal/config"
 
 func deviceConfigRequiresRestart(old config.DeviceConfig, next config.DeviceConfig) bool {
 	if config.NormalizeIMEI(old.ModemIMEI) != config.NormalizeIMEI(next.ModemIMEI) {

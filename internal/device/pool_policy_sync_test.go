@@ -3,7 +3,7 @@ package device
 import (
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 func newPoolWithWorkerForSync(id string, cfg config.DeviceConfig) (*Pool, *Worker) {

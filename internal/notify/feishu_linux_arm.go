@@ -5,7 +5,7 @@ package notify
 import (
 	"fmt"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // FeishuChannel is unavailable on linux/arm because the upstream Feishu SDK does

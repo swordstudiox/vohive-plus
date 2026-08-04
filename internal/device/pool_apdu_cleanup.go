@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	qmipkg "github.com/iniwex5/vohive/internal/qmi"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	qmipkg "github.com/swordstudiox/vohive-plus/internal/qmi"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 var startupSIMAuthLogicalChannelsToClose = []int{1, 2, 3, 4}

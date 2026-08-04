@@ -4,13 +4,13 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
-	"encoding/hex"
 
-	dev "github.com/iniwex5/vohive/internal/device"
-	mbimcore "github.com/iniwex5/vohive/internal/mbim"
+	dev "github.com/swordstudiox/vohive-plus/internal/device"
+	mbimcore "github.com/swordstudiox/vohive-plus/internal/mbim"
 )
 
 func main() {

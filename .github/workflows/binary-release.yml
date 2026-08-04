@@ -1,4 +1,4 @@
-name: Build Release Binaries
+name: Build Release Artifacts
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version string used when manually triggered'
+        description: 'Release version, with or without a leading v'
         required: false
-        default: 'dev'
+        default: '1.0.0'
       enable_upx:
-        description: 'Enable UPX compression (true/false)'
+        description: 'Enable UPX compression for Linux runtime binaries (true/false)'
         required: false
         default: 'false'
 
@@ -19,13 +19,45 @@ permissions:
   contents: write
 
 concurrency:
-  group: binary-release-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  frontend:
-    name: Build frontend assets
+  vars:
+    name: Prepare release variables
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.vars.outputs.version }}
+      tag: ${{ steps.vars.outputs.tag }}
+      buildtime: ${{ steps.vars.outputs.buildtime }}
+      enable_upx: ${{ steps.vars.outputs.enable_upx }}
+    steps:
+      - name: Normalize version
+        id: vars
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            RAW_VERSION="${GITHUB_REF_NAME}"
+          else
+            RAW_VERSION="${{ github.event.inputs.version || '1.0.0' }}"
+          fi
+          VERSION="${RAW_VERSION#v}"
+          TAG="v${VERSION}"
+          BUILDTIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          ENABLE_UPX_RAW="${{ github.event.inputs.enable_upx || 'false' }}"
+          case "${ENABLE_UPX_RAW}" in
+            true|1|yes|on) ENABLE_UPX=1 ;;
+            *) ENABLE_UPX=0 ;;
+          esac
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "buildtime=${BUILDTIME}" >> "${GITHUB_OUTPUT}"
+          echo "enable_upx=${ENABLE_UPX}" >> "${GITHUB_OUTPUT}"
+
+  frontend:
+    name: Build embedded Web UI
+    runs-on: ubuntu-latest
+    needs: vars
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,7 +73,7 @@ jobs:
         shell: bash
         run: |
           npm ci --prefix web
-          npm run build --prefix web
+          npm run build:check --prefix web
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4
@@ -51,10 +83,12 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  build:
-    name: Build ${{ matrix.artifact_arch }}
+  backend:
+    name: Build Linux runtime ${{ matrix.artifact_arch }}
     runs-on: ubuntu-latest
-    needs: frontend
+    needs:
+      - vars
+      - frontend
     strategy:
       fail-fast: false
       matrix:
@@ -79,25 +113,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Prepare build vars
-        id: vars
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-          else
-            VERSION="${{ github.event.inputs.version || 'dev' }}"
-          fi
-          BUILDTIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          ENABLE_UPX_RAW="${{ github.event.inputs.enable_upx || 'false' }}"
-          case "${ENABLE_UPX_RAW}" in
-            true|1|yes|on) ENABLE_UPX=1 ;;
-            *) ENABLE_UPX=0 ;;
-          esac
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "buildtime=${BUILDTIME}" >> "${GITHUB_OUTPUT}"
-          echo "enable_upx=${ENABLE_UPX}" >> "${GITHUB_OUTPUT}"
-
       - name: Download frontend dist
         uses: actions/download-artifact@v4
         with:
@@ -111,71 +126,179 @@ jobs:
           mkdir -p internal/web
           cp -R web/dist internal/web/dist
 
-      - name: Build binary
+      - name: Build Linux runtime
         shell: bash
         run: |
-          mkdir -p dist
+          mkdir -p dist out
           GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} GOARM=${{ matrix.goarm }} \
             go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" \
-            -ldflags "-s -w -X 'github.com/iniwex5/vohive/internal/global.Version=${{ steps.vars.outputs.version }}' -X 'github.com/iniwex5/vohive/internal/global.BuildTime=${{ steps.vars.outputs.buildtime }}'" \
-            -o dist/vo-hive ./cmd/vohive
+            -ldflags "-s -w -X 'github.com/swordstudiox/vohive-plus/internal/global.Version=${{ needs.vars.outputs.version }}' -X 'github.com/swordstudiox/vohive-plus/internal/global.BuildTime=${{ needs.vars.outputs.buildtime }}'" \
+            -o dist/vohive ./cmd/vohive
 
       - name: Install UPX
-        if: ${{ steps.vars.outputs.enable_upx == '1' }}
+        if: ${{ needs.vars.outputs.enable_upx == '1' }}
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y upx-ucl || sudo apt-get install -y upx
 
       - name: Compress with UPX
-        if: ${{ steps.vars.outputs.enable_upx == '1' }}
+        if: ${{ needs.vars.outputs.enable_upx == '1' }}
         shell: bash
         run: |
-          upx --best --lzma dist/vo-hive || upx -9 dist/vo-hive
+          upx --best --lzma dist/vohive || upx -9 dist/vohive
 
-      - name: Package artifact
+      - name: Package Linux runtime
         shell: bash
         run: |
-          OUT="vohive_${{ steps.vars.outputs.version }}_linux_${{ matrix.artifact_arch }}"
-          mkdir -p out
-          cp dist/vo-hive "out/${OUT}"
+          OUT="vohive-plus-firmware_${{ needs.vars.outputs.version }}_linux_${{ matrix.artifact_arch }}"
+          cp dist/vohive "out/${OUT}"
           sha256sum "out/${OUT}" > "out/${OUT}.sha256"
 
-      - name: Upload artifact
+      - name: Upload Linux runtime artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.artifact_arch }}
+          name: firmware-${{ matrix.artifact_arch }}
           path: out/*
+          if-no-files-found: error
+          retention-days: 3
+
+  desktop-windows:
+    name: Build Windows desktop portable package
+    runs-on: windows-latest
+    needs:
+      - vars
+      - backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download amd64 Linux runtime for desktop resources
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-amd64
+          path: desktop/ci-artifacts/firmware
+
+      - name: Copy embedded Linux runtime
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $version = "${{ needs.vars.outputs.version }}"
+          $source = "ci-artifacts\firmware\vohive-plus-firmware_${version}_linux_amd64"
+          if (!(Test-Path -LiteralPath $source)) {
+            throw "Missing amd64 Linux runtime artifact: $source"
+          }
+          Copy-Item -LiteralPath $source -Destination "src-tauri\resources\vohive\vohive-open_linux_amd64" -Force
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop app
+        working-directory: desktop
+        shell: pwsh
+        run: pnpm tauri build
+
+      - name: Package portable desktop zip
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $version = "${{ needs.vars.outputs.version }}"
+          $package = "vohive-plus-desktop_${version}_windows_x64"
+          $root = Join-Path $PWD "out\$package"
+          $exe = "src-tauri\target\release\vohive-plus-desktop.exe"
+          $resourceSource = "src-tauri\target\release\resources\vohive"
+          if (!(Test-Path -LiteralPath $exe)) {
+            throw "Missing desktop executable: $exe"
+          }
+          if (!(Test-Path -LiteralPath $resourceSource)) {
+            $resourceSource = "src-tauri\resources\vohive"
+          }
+          New-Item -ItemType Directory -Force -Path "$root\resources\vohive" | Out-Null
+          Copy-Item -LiteralPath $exe -Destination $root -Force
+          Copy-Item -Path "$resourceSource\*" -Destination "$root\resources\vohive" -Recurse -Force
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $root).FullName -DestinationPath "out\$package.zip" -Force
+          $zip = "out\$package.zip"
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $package.zip" | Set-Content -Path "$zip.sha256" -NoNewline -Encoding ascii
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-x64
+          path: |
+            desktop/out/*.zip
+            desktop/out/*.sha256
+          if-no-files-found: error
           retention-days: 3
 
   release:
-    name: Publish release assets
+    name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - vars
+      - backend
+      - desktop-windows
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Prepare release vars
-        id: release_vars
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            RELEASE_VERSION="${GITHUB_REF_NAME}"
-          else
-            RELEASE_VERSION="${{ github.event.inputs.version || 'dev' }}"
-          fi
-          echo "release_version=${RELEASE_VERSION}" >> "${GITHUB_OUTPUT}"
+      - name: Checkout release notes
+        uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download Linux runtime artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: binaries-*
+          pattern: firmware-*
           merge-multiple: true
           path: dist
 
-      - name: Publish to this GitHub Release
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: dist
+
+      - name: Select release notes
+        id: notes
+        shell: bash
+        run: |
+          NOTES=".github/release-notes/${{ needs.vars.outputs.tag }}.md"
+          if [[ -f "${NOTES}" ]]; then
+            echo "body_path=${NOTES}" >> "${GITHUB_OUTPUT}"
+          else
+            FALLBACK="dist/release-notes-${{ needs.vars.outputs.tag }}.md"
+            printf '%s\n' \
+              '# VoHive Plus Release' \
+              '' \
+              '本次发布没有找到对应的 `.github/release-notes/版本.md` 文件，已使用自动兜底说明。请在后续发布前补充版本发布说明。' \
+              > "${FALLBACK}"
+            echo "body_path=${FALLBACK}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release_vars.outputs.release_version }}
+          tag_name: ${{ needs.vars.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: VoHive Plus ${{ needs.vars.outputs.version }}
+          body_path: ${{ steps.notes.outputs.body_path }}
           files: dist/*
           fail_on_unmatched_files: true
           overwrite_files: true

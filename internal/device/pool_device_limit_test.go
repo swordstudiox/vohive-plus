@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // TestPoolAddWorkerFromConfigRejectsFourthWorkerBeforeHardwareInit 测试当设备数量达到限制时，添加新设备应该被限额策略拒绝

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	mbimcore "github.com/iniwex5/vohive/internal/mbim"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	mbimcore "github.com/swordstudiox/vohive-plus/internal/mbim"
 )
 
 type fakeController struct {

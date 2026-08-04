@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
 	"github.com/stretchr/testify/require"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // 空-IMEI 老配置:按 USB 路径迁移认回硬件 → 回填 IMEI 到 config(仅此一次写),

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 func TestBuildQMIManagerConfigIPFamily(t *testing.T) {

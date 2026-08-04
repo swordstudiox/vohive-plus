@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 // 锁住现状:扫描到的硬件复用了某 IMEI 配置的旧路径,但实时 IMEI 与配置不符 → 不得绑定。

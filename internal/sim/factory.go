@@ -5,10 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/mbim"
 	swusim "github.com/iniwex5/vowifi-go/engine/sim"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
 )
 
 // BackendAKAProvider is the backend surface needed to compute AKA without APDU.
@@ -96,7 +96,7 @@ func BuildAKAProvider(w AKAProviderWorker) swusim.AKAProvider {
 	}
 	if strings.EqualFold(strings.TrimSpace(w.BackendMode()), backend.BackendMBIM) {
 		caps, _ := w.MBIMCapability()
-		
+
 		var mbimAuth swusim.AKAProvider
 		if caps != nil && caps.AuthAKAUsable() {
 			if provider, ok := w.MBIMAKAProvider(); ok && provider != nil {

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 func TestHandleDevicePrepareUSBReturnsSummary(t *testing.T) {

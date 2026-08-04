@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "lint": "node ./node_modules/eslint/bin/eslint.js \"src/**/*.{ts,vue}\"",
-    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "test": "tsx --test tests/*.test.ts",
     "typecheck": "vue-tsc --noEmit",
-    "build": "npm run typecheck && vite build",
+    "build": "vite build",
+    "build:check": "npm run typecheck && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {

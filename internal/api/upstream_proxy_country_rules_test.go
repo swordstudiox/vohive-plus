@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/upstreamproxy"
+	"github.com/swordstudiox/vohive-plus/internal/db"
+	"github.com/swordstudiox/vohive-plus/internal/upstreamproxy"
 )
 
 func loadAPICountryTableFixture(t *testing.T) {

@@ -21,7 +21,7 @@ import (
 	"github.com/damonto/euicc-go/lpa"
 	sgp22 "github.com/damonto/euicc-go/v2"
 	qmiq "github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/backend"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
 	"golang.org/x/sync/singleflight"
 )
 

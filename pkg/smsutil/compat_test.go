@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/swordstudiox/vohive-plus/pkg/smscodec"
 	"github.com/warthog618/sms/encoding/tpdu"
 )
 

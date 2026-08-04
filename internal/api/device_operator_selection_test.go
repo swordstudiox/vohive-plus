@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
+	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 func TestOperatorSelectionErrorStatusMapsBusyStatesToConflict(t *testing.T) {

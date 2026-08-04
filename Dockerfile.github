@@ -11,7 +11,7 @@ COPY web/package*.json ./
 RUN --mount=type=cache,target=/root/.npm,id=npm-${BUILDPLATFORM},sharing=locked \
     npm ci
 COPY web/ .
-RUN npm run build
+RUN npm run build:check
 
 # 构建阶段 2: 后端构建 (Backend)
 FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS backend-builder
@@ -59,7 +59,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build,id=gobuild-${TARGETOS}-${TAR
       BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"; \
     fi && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" -ldflags "-s -w -X 'github.com/iniwex5/vohive/internal/global.Version=${VERSION}' -X 'github.com/iniwex5/vohive/internal/global.BuildTime=${BUILD_TIME}'" -o vo-hive ./cmd/vohive && \
+    go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" -ldflags "-s -w -X 'github.com/swordstudiox/vohive-plus/internal/global.Version=${VERSION}' -X 'github.com/swordstudiox/vohive-plus/internal/global.BuildTime=${BUILD_TIME}'" -o vo-hive ./cmd/vohive && \
     if [ "${ENABLE_UPX}" = "1" ] || [ "${ENABLE_UPX}" = "true" ]; then \
       echo "UPX enabled, compressing binary..."; \
       (apk add --no-cache upx >/dev/null 2>&1 || apk add --no-cache upx-ucl >/dev/null 2>&1 || true); \

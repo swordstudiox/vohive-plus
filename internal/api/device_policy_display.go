@@ -3,8 +3,8 @@ package api
 import (
 	"errors"
 
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/db"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/db"
 )
 
 // cardPolicyFromDeviceConfig 把设备保存 DTO 解析出的策略字段映射为 card_policies 行。

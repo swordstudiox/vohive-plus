@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
 	"github.com/miekg/dns"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 )
 
 func TestResolveIPv4WithTCPDNS(t *testing.T) {

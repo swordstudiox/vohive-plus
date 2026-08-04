@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/config"
+	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 // 不同 IMEI 落在已配置设备的旧路径上,不再是"冲突":新模组就是一台可正常添加的设备,
@@ -51,7 +51,6 @@ devices:
 		dev.IMEI = "222222222222222"
 		return dev, "222222222222222"
 	}
-
 
 	got := requestDiscoveredDevices(t, &Server{pool: device.NewPool(&config.Config{}), configPath: path})
 	if len(got.Devices) != 1 {
@@ -94,7 +93,6 @@ devices: []
 		return dev, "" // AT/QMI 探不到 IMEI
 	}
 	probeIMEIViaMBIMForMgmtFn = func(string) (string, error) { return "", fmt.Errorf("mbim hung") } // MBIM 也读不到
-
 
 	got := requestDiscoveredDevices(t, &Server{pool: device.NewPool(&config.Config{}), configPath: path})
 	if len(got.Devices) != 1 {
@@ -139,7 +137,6 @@ devices:
 		dev.IMEI = "111111111111111"
 		return dev, "111111111111111"
 	}
-
 
 	got := requestDiscoveredDevices(t, &Server{pool: device.NewPool(&config.Config{}), configPath: path})
 	d := got.Devices[0]

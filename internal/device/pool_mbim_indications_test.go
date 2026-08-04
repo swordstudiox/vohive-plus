@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	mbimcore "github.com/iniwex5/vohive/internal/mbim"
-	"github.com/iniwex5/vohive/pkg/mbim"
+	mbimcore "github.com/swordstudiox/vohive-plus/internal/mbim"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
 )
 
 func TestBindMBIMStateIndicationsTriggersHandleSIMStatusEvent(t *testing.T) {

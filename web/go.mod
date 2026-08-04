@@ -1,3 +1,3 @@
-module github.com/iniwex5/vohive/web
+module github.com/swordstudiox/vohive-plus/web
 
 go 1.26.4

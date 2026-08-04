@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/iniwex5/vohive/pkg/mbim"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
 )
 
 // ReadSIMEF 应先用 APPLICATION_LIST 解析完整 USIM AID,再用该完整 AID 直接调用

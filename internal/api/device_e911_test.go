@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/iniwex5/vohive/internal/e911"
+	"github.com/swordstudiox/vohive-plus/internal/e911"
 )
 
 func TestE911ErrorStatus(t *testing.T) {

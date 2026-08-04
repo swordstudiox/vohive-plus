@@ -40,3 +40,13 @@
 ## 2026-08-03 Git 提交规范
 
 - 每次本地提交都要编写详细中文提交说明，至少包含本次变更的背景、核心改动、验证命令和已知剩余风险；不要只写一句泛泛的 `update` 或 `fix`。
+
+## 2026-08-04 Fork 发布路径
+
+- Fork 成独立项目并准备推送到新远程仓库时，不能只改 git remote 和 README；Go 根模块路径、内部 import、构建 `ldflags`、CI workflow、示例命令和子模块 `go.mod` 也要同步迁移，否则 `go test` 会继续输出旧上游包路径，Release 二进制也会把旧路径作为版本变量注入目标。
+- 这类迁移要加仓库级回归测试，扫描核心源码、构建脚本和文档中的旧根 module path，防止后续合并上游代码时把旧路径带回来。
+
+## 2026-08-04 Web 构建性能
+
+- 在 WSL2 的 `/mnt/f` 这类 Windows 挂载盘上跑 `vue-tsc --noEmit` 会非常慢；本项目实测同一份 Web 类型检查在 WSL `/mnt/f` 约 204 秒，Windows 原生 Node 约 10 秒。不要把慢路径误判为 Vite 卡死。
+- Web 脚本应拆分“快速打包”和“完整发布校验”：日常 `npm run build` 只生成 `dist`，发布/CI 使用 `npm run build:check` 执行 `typecheck + build`，既保留质量门槛，也避免本地反复构建被类型检查拖慢。

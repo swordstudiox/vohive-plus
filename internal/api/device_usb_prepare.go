@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/device"
+	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 var prepareWSLUSBForAPIFn = func(ctx context.Context) (device.WSLUSBPrepareResult, error) {

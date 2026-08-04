@@ -11,8 +11,8 @@ import (
 	"time"
 
 	qmiq "github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/mbim"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
+	"github.com/swordstudiox/vohive-plus/pkg/mbim"
 )
 
 var (

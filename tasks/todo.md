@@ -340,6 +340,57 @@
 - Hyper-V 与 VirtualBox 在部分机器上存在性能或兼容性差异。
 - `windloom/vohive-open` 的 VoWiFi 相关 AGPL 许可证义务影响后续分发策略。
 
+## 阶段 6：GitHub 远程、版本、CI 与 Release
+
+### 目标
+
+- [ ] 将当前本地 fork 推送到 `swordstudiox/vohive-plus`。
+- [x] 固件/后端 Linux 运行时版本号设为 `1.0.0`。
+- [x] Windows 桌面壳版本号设为 `1.0.0`。
+- [x] GitHub Actions 在 tag 发布时自动构建 Linux 后端运行时和 Windows 桌面便携包。
+- [x] Release notes 先写入 `.github/release-notes/v1.0.0.md`，发布时自动读取并作为 Release 页面说明。
+- [x] README 改为面向 VoHive Plus，包含普通用户、开发者、环境要求、WSL2/usbipd、构建和发布产物说明。
+- [x] 根 Go module path 迁移为 `github.com/swordstudiox/vohive-plus`，避免构建和测试输出继续显示旧上游 `github.com/iniwex5/vohive`。
+- [x] Dockerfile / Dockerfile.github 的 Go `ldflags -X` 版本注入路径同步迁移到 `github.com/swordstudiox/vohive-plus`。
+- [x] Web 构建脚本拆分为快速 `build` 和完整 `build:check`；Release workflow 与 Dockerfile 使用完整校验构建，日常本地构建避免反复等待 WSL `/mnt/f` 上的慢速 `vue-tsc`。
+
+### 待确认
+
+- [x] Release 发布目标仓库：用户已确认发布到 `swordstudiox/vohive-plus/releases`。
+
+### 推荐方案
+
+- [ ] 远程策略：把当前 `origin` 从 `windloom/vohive-open` 改名为 `upstream`，新增 `origin=https://github.com/swordstudiox/vohive-plus.git`，再推送 `main` 和 `v1.0.0` tag。
+- [x] 版本策略：`v1.0.0` 作为首个正式版本；CI 从 tag 名读取版本，写入 Go `internal/global.Version`，同步桌面 `package.json`、`tauri.conf.json`、`Cargo.toml` 到 `1.0.0`。后续版本遵循语义化版本：修复用 patch，兼容功能用 minor，破坏性变化用 major。
+- [x] 构建产物：不恢复 NSIS 安装包；Release 上传 Linux 后端运行时二进制和校验文件，以及 Windows x64 桌面便携 zip。桌面 zip 内含 `vohive-plus-desktop.exe`、`resources/vohive/vohive-open_linux_amd64`、示例配置和 WSL USB 准备脚本。
+- [x] Workflow 策略：改造现有 `.github/workflows/binary-release.yml`，保留 Linux 多架构后端构建，新增 Windows 桌面构建 job，并在 release job 统一上传所有产物。
+- [x] Release notes 策略：新增 `.github/release-notes/v1.0.0.md`；workflow 优先读取对应版本文件，文件不存在时使用兜底说明。
+- [x] 模块路径策略：`go.mod`、`web/go.mod`、内部 Go import、Makefile、Dockerfile、Release workflow 和 README 使用 `github.com/swordstudiox/vohive-plus`；新增回归测试防止旧上游根模块路径回流。
+
+### 可选项
+
+- [x] 可选 A：只发布到 `swordstudiox/vohive-plus/releases`。用户已确认，产物和源码同仓库，GitHub Actions 权限最简单。
+- [ ] 可选 B：源码推送到 `swordstudiox/vohive-plus`，但 Release 产物发布到 `swordstudiox/esp32_sms_forwarding/releases`。不推荐，需要额外 token 和跨仓库权限，用户也更容易下载错项目。
+- [ ] 可选 C：桌面发布裸 exe。暂不推荐，因为运行还依赖旁边的 `resources/vohive/*`，裸 exe 容易缺资源。
+- [x] 可选 D：桌面发布 zip 便携包。最符合“无需安装包”的当前边界。
+
+### 实施步骤
+
+- [x] 确认 Release 目标仓库。
+- [x] 更新版本号到 `1.0.0`。
+- [x] 新增 `.github/release-notes/v1.0.0.md`。
+- [x] 改造 GitHub Actions release workflow：Linux 后端、多架构校验、Windows 桌面 zip、Release notes 自动读取。
+- [x] 重写 README。
+- [x] 迁移 Go module path 和内部 import 到 `github.com/swordstudiox/vohive-plus`。
+- [x] 补齐 Dockerfile / Dockerfile.github 旧 `ldflags` 路径残留并扩大模块路径回归测试扫描范围。
+- [x] 拆分 Web 快速构建和完整发布构建，并新增脚本回归测试。
+- [x] 验证拆分效果：WSL `/mnt/f` 下 `npm run build --prefix web` 耗时约 107 秒，`npm run build:check --prefix web` 耗时约 270 秒；发布入口仍保留完整类型检查。
+- [x] 本地验证 workflow 关键脚本、桌面测试、前端构建和 Rust 测试。
+- [ ] 本地提交，提交说明使用详细中文。
+- [ ] 调整 git remote，推送 `main`。
+- [ ] 创建并推送 `v1.0.0` tag 触发 GitHub Actions。
+- [ ] 检查 Actions 和 Release 页面产物。
+
 ## 评审记录
 
 - 2026-08-03 阶段 1 已执行：本目录原先只有 `tasks/`，未发现上游源码；已克隆 `windloom/vohive-open` 到 `upstream/vohive-open`，当前 commit 为 `de689a554d1b86b97dcc71140bfbee250eff1d4e`。
@@ -369,3 +420,5 @@
 - 2026-08-03 阶段 4I 修正：用户确认 `连接 USB 到 WSL` 不应自动启动 WSL；已改为仅检查 `Ubuntu-24.04` 是否 Running，未运行时提示先点“启动 WSL”。`PrepareWSLUSB` 对 `qmi_wwan/bind` 瞬时 `no such device` 增加重试和 driver 复查；新后端实机 `--prepare-usb` 返回 `prepared=true`，设备为 `/dev/cdc-wdm0` + `wwan0` + `/dev/ttyUSB0-3`。验证：RED 测试确认失败后修复，`go test ./internal/api ./internal/db ./internal/device -count=1`、`cargo test`、`node --test tests/*.test.mjs`、`pnpm run build`、`pnpm tauri build --debug` 均通过。
 - 2026-08-03 阶段 4J 决策：用户确认当前安装包不安装/配置 WSL2，也不安装 `usbipd-win`，功能上与桌面壳 exe 基本一致，因此取消 NSIS 安装包构建；后续只保留桌面 exe 与便携包路线。
 - 待实施后补充：VirtualBox 路线实际体积、启动耗时、USB 稳定性。
+- 2026-08-04 阶段 6 发布前修正：用户指出 Go 测试输出仍显示旧根路径后，已确认并修复 `go.mod`、`web/go.mod`、内部 import、Makefile、Release workflow、Dockerfile 和 Dockerfile.github 中的项目根模块路径；当前 WSL2 Go 测试输出为 `github.com/swordstudiox/vohive-plus/...`。同时将 Web 构建拆分为快速 `build` 和完整 `build:check`，Release/Docker 继续使用完整校验，本地快速构建避免每次等待慢速 `vue-tsc`。
+- 2026-08-04 阶段 6 验证：`node --test tests/*.test.mjs` 3 项通过；`desktop` 下 `node --test tests/*.test.mjs` 5 项通过；`git diff --check` 通过但有 CRLF 提示；WSL2 `go test ./cmd/vohive ./internal/api ./internal/db ./internal/device -count=1` 通过；WSL2 `npm run test --prefix web` 17 项通过；WSL2 `npm run build --prefix web` 通过，耗时约 107 秒；WSL2 `npm run build:check --prefix web` 通过，耗时约 270 秒；`desktop` 下 `pnpm run build` 通过；`desktop/src-tauri` 下 `cargo test` 15 项通过。
