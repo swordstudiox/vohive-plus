@@ -344,7 +344,7 @@
 
 ### 目标
 
-- [ ] 将当前本地 fork 推送到 `swordstudiox/vohive-plus`。
+- [x] 将当前本地 fork 推送到 `swordstudiox/vohive-plus`。
 - [x] 固件/后端 Linux 运行时版本号设为 `1.0.0`。
 - [x] Windows 桌面壳版本号设为 `1.0.0`。
 - [x] GitHub Actions 在 tag 发布时自动构建 Linux 后端运行时和 Windows 桌面便携包。
@@ -360,7 +360,7 @@
 
 ### 推荐方案
 
-- [ ] 远程策略：把当前 `origin` 从 `windloom/vohive-open` 改名为 `upstream`，新增 `origin=https://github.com/swordstudiox/vohive-plus.git`，再推送 `main` 和 `v1.0.0` tag。
+- [x] 远程策略：把当前 `origin` 从 `windloom/vohive-open` 改名为 `upstream`，新增 `origin=https://github.com/swordstudiox/vohive-plus.git`，再推送 `main` 和 `v1.0.0` tag。
 - [x] 版本策略：`v1.0.0` 作为首个正式版本；CI 从 tag 名读取版本，写入 Go `internal/global.Version`，同步桌面 `package.json`、`tauri.conf.json`、`Cargo.toml` 到 `1.0.0`。后续版本遵循语义化版本：修复用 patch，兼容功能用 minor，破坏性变化用 major。
 - [x] 构建产物：不恢复 NSIS 安装包；Release 上传 Linux 后端运行时二进制和校验文件，以及 Windows x64 桌面便携 zip。桌面 zip 内含 `vohive-plus-desktop.exe`、`resources/vohive/vohive-open_linux_amd64`、示例配置和 WSL USB 准备脚本。
 - [x] Workflow 策略：改造现有 `.github/workflows/binary-release.yml`，保留 Linux 多架构后端构建，新增 Windows 桌面构建 job，并在 release job 统一上传所有产物。
@@ -386,10 +386,10 @@
 - [x] 拆分 Web 快速构建和完整发布构建，并新增脚本回归测试。
 - [x] 验证拆分效果：WSL `/mnt/f` 下 `npm run build --prefix web` 耗时约 107 秒，`npm run build:check --prefix web` 耗时约 270 秒；发布入口仍保留完整类型检查。
 - [x] 本地验证 workflow 关键脚本、桌面测试、前端构建和 Rust 测试。
-- [ ] 本地提交，提交说明使用详细中文。
-- [ ] 调整 git remote，推送 `main`。
-- [ ] 创建并推送 `v1.0.0` tag 触发 GitHub Actions。
-- [ ] 检查 Actions 和 Release 页面产物。
+- [x] 本地提交，提交说明使用详细中文。
+- [x] 调整 git remote，推送 `main`。
+- [x] 创建并推送 `v1.0.0` tag 触发 GitHub Actions。
+- [ ] 检查 Actions 和 Release 页面产物。本环境 GitHub API、浏览器控制和普通 HTTPS 页面查询受限，已通过 `git ls-remote` 确认远端 `main` 和 `v1.0.0` tag 存在；Actions/Release 页面仍需在 GitHub 网页确认。
 
 ## 评审记录
 
@@ -422,3 +422,4 @@
 - 待实施后补充：VirtualBox 路线实际体积、启动耗时、USB 稳定性。
 - 2026-08-04 阶段 6 发布前修正：用户指出 Go 测试输出仍显示旧根路径后，已确认并修复 `go.mod`、`web/go.mod`、内部 import、Makefile、Release workflow、Dockerfile 和 Dockerfile.github 中的项目根模块路径；当前 WSL2 Go 测试输出为 `github.com/swordstudiox/vohive-plus/...`。同时将 Web 构建拆分为快速 `build` 和完整 `build:check`，Release/Docker 继续使用完整校验，本地快速构建避免每次等待慢速 `vue-tsc`。
 - 2026-08-04 阶段 6 验证：`node --test tests/*.test.mjs` 3 项通过；`desktop` 下 `node --test tests/*.test.mjs` 5 项通过；`git diff --check` 通过但有 CRLF 提示；WSL2 `go test ./cmd/vohive ./internal/api ./internal/db ./internal/device -count=1` 通过；WSL2 `npm run test --prefix web` 17 项通过；WSL2 `npm run build --prefix web` 通过，耗时约 107 秒；WSL2 `npm run build:check --prefix web` 通过，耗时约 270 秒；`desktop` 下 `pnpm run build` 通过；`desktop/src-tauri` 下 `cargo test` 15 项通过。
+- 2026-08-04 阶段 6 推送状态：已创建提交 `8bd57b3 发布 VoHive Plus 1.0.0` 并推送到 `origin/main`；已创建并推送注释标签 `v1.0.0`，标签对象为 `06016fea...`，指向提交 `8bd57b3...`。`git ls-remote origin refs/heads/main` 返回 `8bd57b3...`，`git ls-remote origin refs/tags/v1.0.0` 返回 `06016fea...`。本机未安装 `gh`，GitHub API/普通 HTTPS 查询和浏览器控制不可用，因此未能在本环境直接确认 Actions/Release 页面产物。
