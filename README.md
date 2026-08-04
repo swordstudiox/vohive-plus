@@ -1,15 +1,48 @@
 # VoHive Plus
 
-VoHive Plus 是基于 `windloom/vohive-open` 的 Windows + WSL2 桌面化分支，目标是让大疆 4G 模块在 Windows 电脑上通过轻量桌面壳管理 Linux 后端、USB 直通和 Web 管理页面。
+本项目已从 [windloom/vohive-open](https://github.com/windloom/vohive-open) fork 为 [swordstudiox/vohive-plus](https://github.com/swordstudiox/vohive-plus)。
+
+VoHive Plus 是面向 Windows + WSL2 的桌面化分支，目标是让大疆 4G 模块在 Windows 电脑上通过轻量桌面壳管理 Linux 后端、USB 直通和 Web 管理页面。
 
 当前主线是 WSL2 路线。桌面软件会把内置的 Linux 后端运行时部署到 WSL2 的 `/opt/vohive`，再由 WSL2 负责识别蜂窝模块、建立 QMI/AT 设备节点并运行 VoHive Web 服务。
 
 > 本项目里的“固件”指 VoHive Plus Linux 后端运行时二进制，不是大疆模块或通信模组的硬件固件，不会刷写硬件。
 
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm--Noncommercial--1.0.0-blue.svg)](https://polyformproject.org/licenses/noncommercial/1.0.0)
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](go.mod)
+[![Vue 3](https://img.shields.io/badge/Vue-3-42b883?logo=vue.js)](web/package.json)
+
+## Fork 说明
+
+- 上游项目：`windloom/vohive-open`。
+- 当前项目：`swordstudiox/vohive-plus`。
+- 继承内容：VoHive 后端、Web 管理后台、模组管理、短信、eSIM、通知、代理等能力。
+- 本项目新增重点：Windows 桌面壳、WSL2 USB 编排、大疆/Baiwang `2ca3:4006` 设备准备、Windows 便携包发布、漫游开关和本地运行体验。
+- 源码整合：项目可见依赖放在 `third_party/`，用于在缺少不可用上游仓库时保持源码可构建；详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 上游能力概览
+
+VoHive 面向高通 4G/LTE/5G 模组，例如 Quectel EC20、EC25、EC21、EG25、EM20 等，提供模组管理、代理编排、短信收发、VoWiFi/IMS 通话、eSIM 生命周期管理和响应式 Web 管理后台。
+
+| 模块 | 说明 |
+| --- | --- |
+| 多模组并发管理 | 支持 USB 热插拔发现、多设备状态监控和运行时设备管理。 |
+| 轻量级代理引擎 | 支持 SOCKS5 / HTTP 代理实例，按设备网卡绑定出站流量。 |
+| 通信与短信中心 | 通过统一 Web/API 管理 AT 短信收发、会话、联系人和 USSD 交互，短信可落库查询。 |
+| eSIM 管理 | 通过 AT 指令通道管理 eSIM Profile，包括下载、启用、停用、重命名和删除。 |
+| 全渠道通知 | 重要短信和系统告警可推送至 Telegram、Email、PushPlus、Bark、飞书、QQ 等渠道。 |
+| 多架构构建 | 支持 amd64、arm64、armv7 等 Linux 运行时构建。 |
+
+典型应用场景：
+
+- 私有 IP 代理池：单主机挂载多张物理 SIM 卡或 eSIM，每张网卡对应独立代理实例。
+- 统一接码/验证码中心：通过 Web 界面或 API 并行收发多卡短信，并推送到个人终端。
+- VoWiFi 零信号通信：在地下室、弱覆盖等场景下，借助宽带网络隧道建立 IMS 连接。
+
 ## 当前能力
 
 - Windows 桌面壳：检测 WSL2、检测 usbipd-win、枚举大疆/Baiwang `2ca3:4006` USB 设备。
-- WSL2 USB 编排：连接 USB 到 WSL，准备 `/dev/ttyUSB*`、`/dev/cdc-wdm0`、`wwan0`。
+- WSL2 USB 编排：连接 USB 到 WSL，准备 `/dev/ttyUSB*`、`/dev/cdc-wdm0`、`wwan0` 或 ECM 网卡。
 - 后端管理：从桌面界面启动/停止 WSL2 内的 VoHive 后端，查看日志并打开 Web UI。
 - Web 管理：添加设备、重新扫描、短信/卡策略等原有 VoHive 能力。
 - 蜂窝策略：支持蜂窝数据开关、VoWiFi 开关、飞行模式、APN/IP 版本和漫游开关。
@@ -56,7 +89,7 @@ Web 默认地址为 `http://127.0.0.1:7575/`，默认登录账号为 `admin/admi
 
 - `启动 WSL`：启动并保活目标 WSL2 发行版。
 - `连接 USB 到 WSL`：调用 `usbipd-win` 将 `2ca3:4006 Baiwang` 设备 attach 到 WSL2。WSL 未运行时只提示用户先启动，不会自动启动。
-- `准备 WSL USB`：在 WSL2 内绑定 `option` 和 `qmi_wwan` 驱动，生成 VoHive 需要的设备节点。
+- `准备 WSL USB`：在 WSL2 内绑定所需 Linux 驱动，生成 VoHive 需要的设备节点或网卡。
 - `启动后端`：把桌面包内置的 Linux 后端运行时、默认配置和 USB 准备脚本部署到 `/opt/vohive`，并启动 Web 服务。
 - `停止后端`：停止 WSL2 内的 VoHive 后端进程。
 - `打开 Web`：打开本机 Web 管理页面。
@@ -102,17 +135,15 @@ cp -R web/dist internal/web/dist
 GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" \
   -ldflags "-s -w -X 'github.com/swordstudiox/vohive-plus/internal/global.Version=1.0.0'" \
-  -o dist/vohive-plus-firmware_1.0.0_linux_amd64 ./cmd/vohive
+  -o dist/vohive-open_linux_amd64 ./cmd/vohive
 ```
 
 ### 本地构建桌面软件
 
-桌面壳需要内置 Linux amd64 后端运行时。先确认下面文件存在：
+桌面壳需要内置 Linux amd64 后端运行时，但该二进制不进入 Git。先按“本地构建后端”生成：
 
 ```text
-desktop/src-tauri/resources/vohive/vohive-open_linux_amd64
-desktop/src-tauri/resources/vohive/config.example.yaml
-desktop/src-tauri/resources/vohive/vohive-usb-prepare.sh
+dist/vohive-open_linux_amd64
 ```
 
 然后在 Windows 环境执行：
@@ -123,7 +154,7 @@ pnpm install
 pnpm tauri build
 ```
 
-当前项目不生成 NSIS 安装包。正式发布通过 GitHub Actions 把 `vohive-plus-desktop.exe` 和 `resources/vohive/*` 打成便携 zip。
+`pnpm tauri build` 会先执行 `pnpm sync:backend`，把 `dist/vohive-open_linux_amd64` 同步到 Tauri 资源目录。当前项目不生成 NSIS 安装包。正式发布通过 GitHub Actions 把 `vohive-plus-desktop.exe` 和 `resources/vohive/*` 打成便携 zip。
 
 ### 测试命令
 
@@ -135,6 +166,7 @@ npm run build --prefix web
 ```
 
 ```powershell
+node --test tests/*.test.mjs
 cd desktop
 node --test tests/*.test.mjs
 pnpm run build
@@ -168,8 +200,16 @@ GitHub Actions 会构建后端多架构运行时、Windows 桌面便携包，并
 - VirtualBox Headless + 最小 Debian 是后续方向，当前 Release 不包含 VM 镜像。
 - 桌面壳不会自动安装 WSL2 或 usbipd-win。
 - 默认账号 `admin/admin` 和默认监听所有地址是当前版本保留行为。
+- 当前 GitHub Actions 不构建或上传容器镜像。
 - 请自行确认所在地区法律法规、运营商服务条款和硬件使用风险。
+
+## 免责声明
+
+- 用途定位：本项目主要面向个人学习、技术研究与功能测试场景，不建议直接用于生产环境或关键业务系统；由此产生的部署及使用风险由使用者自行承担。
+- 非官方项目：VoHive Plus 为第三方独立开发的软件，与大疆、Quectel、高通公司及其他任何模组/芯片厂商均无官方关联、授权或合作关系，亦不对模组硬件本身的功能、质量或安全性负责。
+- 合规使用：使用本项目搭建的服务时，请自行确保符合所在地区的法律法规及电信运营商的服务条款，不得用于任何违法违规用途。因违规使用造成的一切法律责任由使用者自行承担。
+- 无担保：本软件按“现状”提供，不附带任何明示或暗示的担保。因使用或无法使用本软件造成的任何直接或间接损失，作者及贡献者不承担责任。
 
 ## 许可证
 
-根项目基于 [PolyForm Noncommercial License 1.0.0](LICENSE)。本源码整合树包含多个第三方组件，详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本源码整合树不是单一许可项目。根项目基于 [PolyForm Noncommercial License 1.0.0](LICENSE)，`third_party/vowifi-go` 使用 AGPL-3.0，`third_party/quectel-qmi-go`、`third_party/netlink`、`third_party/qqbot` 等组件按各自许可证授权。发布公开二进制前，请先确认组合分发的许可证义务；详情见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

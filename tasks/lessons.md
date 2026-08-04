@@ -94,3 +94,8 @@
 
 - 当 `git push`、`git ls-remote` 等 GitHub HTTPS 操作报 `Connection was reset`、`Could not connect to server` 或 443 端口连接失败时，先用本机 HTTP 代理 `http://127.0.0.1:10808` 做一次性重试，例如 `git -c http.proxy=http://127.0.0.1:10808 -c https.proxy=http://127.0.0.1:10808 push origin main`。
 - 优先使用命令级 `-c http.proxy=... -c https.proxy=...`，不要直接改全局 Git 代理配置；这样不会影响局域网、WSL、包管理器或其他仓库的网络行为。
+
+## 2026-08-04 Fork 后的 CI 发布边界
+
+- Fork 成独立项目后，不能保留旧上游的容器发布 workflow 和旧镜像名；如果当前项目不发布容器镜像，就删除容器发布/构建 workflow，而不是要求用户去补旧仓库的容器仓库密钥。
+- 对 GitHub Actions 报 `Username and password required` 这类登录失败，先检查 workflow 是否仍在引用旧容器仓库账号、密钥、旧镜像名或登录 action，不要直接把“补账号密码”当成默认修复。

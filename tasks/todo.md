@@ -638,3 +638,32 @@
 - 2026-08-04 阶段 2H URC 日志降噪：重复刷屏根因是后端每分钟收到同值 `+QSIMSTAT/+CPIN/+CREG` 仍按 INFO 输出，且重复 `+CPIN: READY` 会再次广播 RDY 触发设备池日志。已在 modem 层新增状态型 URC 签名缓存，只抑制日志和重复 READY 兜底广播，不阻断 SIM 状态 handler、短信、USSD、来电等业务分发。验证：`go test ./internal/modem -count=1` 与 `go test ./internal/api ./internal/device ./internal/modem -count=1` 通过；新二进制已部署到桌面资源和 WSL `/opt/vohive/bin/vohive`；实机日志显示 17:03:45 重启后只记录首次状态和 `CREG 5 -> 2 -> 5` 真实变化，不再按分钟重复 `QSIMSTAT/CPIN/Modem RDY/CREG=5`。
 - 2026-08-04 阶段 4K 桌面内置后端二进制去 Git 跟踪：`desktop/src-tauri/resources/vohive/vohive-open_linux_amd64` 已从 Git 索引移除并加入 `.gitignore`，本地文件保留；新增 `desktop/scripts/sync-backend-resource.mjs`，Tauri dev/build 前自动从 `dist/vohive-open_linux_amd64` 同步或复用 CI 已复制的资源。验证：桌面 Node 测试通过，`git ls-files` 已查不到三个大二进制路径，`git check-ignore` 均命中忽略规则。
 - 2026-08-04 阶段 4K 历史清理完成：用户确认后，已用历史重写从本地可达 refs 中移除 `desktop/src-tauri/resources/vohive/vohive-open_linux_amd64`；删除 `refs/original/*`、过期 reflog 并执行 GC 后，`git rev-list --objects --all` 与 `git log --all -- desktop/src-tauri/resources/vohive/vohive-open_linux_amd64` 均无输出，`git count-objects -vH` 显示 pack 约 2.55 MiB。通过 `http://127.0.0.1:10808` 代理和 `http.sslBackend=openssl` 推送远程：`origin/main` force update 到 `8b0eee2d742b52dc014ada85678712cbcaa0cc86`，`v1.0.0` tag force update 到 tag object `12c1fbcff35ba32a8b5b880a0eeb172affc55cc5`，指向提交 `87e0f1108c47fe9ea032da6ee33f92dbc2fce42f`。已用 `git ls-remote` 通过代理确认远程 refs 一致。
+
+## 阶段 6B：README 合并上游说明与删除 Docker 发布 workflow
+
+### 目标
+
+- [x] README 明确写明本项目已从 `windloom/vohive-open` fork 为 `swordstudiox/vohive-plus`。
+- [x] README 合并上游 `windloom/vohive-open` 原始说明里的核心特性、典型应用场景、架构、免责声明和许可证信息。
+- [x] README 不再保留旧容器镜像名、容器仓库使用说明或容器发布承诺。
+- [x] GitHub Actions 不再登录容器仓库，也不再构建/上传容器镜像。
+
+### 推荐方案
+
+- [x] 保留当前 VoHive Plus 的普通用户、WSL2、桌面壳、Release 和开发者说明。
+- [x] 把上游原 README 内容并入“上游能力概览”一节，而不是覆盖 VoHive Plus 的 Windows 桌面化说明。
+- [x] 删除容器发布/构建 workflow，避免 Actions 触发容器仓库构建。
+- [x] 增加 Node 回归测试，防止容器仓库登录 workflow、旧镜像名和 fork 声明缺失回流。
+
+### 实施步骤
+
+- [x] 写失败测试：README 必须包含 fork 声明和上游能力概览。
+- [x] 写失败测试：workflow 不得包含容器仓库登录、旧镜像名或容器构建发布 workflow。
+- [x] 更新 README。
+- [x] 删除容器发布 workflow。
+- [x] 运行 Node 回归测试和必要检查。
+- [ ] 提交并通过代理推送。
+
+### 评审记录
+
+- 2026-08-04 阶段 6B README/Actions 修复：已将 `windloom/vohive-open` 原 README 中的项目定位、核心特性、典型应用场景、技术栈、免责声明和许可证信息合并到 `README.md`，并在顶部明确写明本项目已从 `windloom/vohive-open` fork 为 `swordstudiox/vohive-plus`。按用户要求删除容器发布路线，不再保留旧容器镜像名或容器仓库使用说明；已删除容器发布/构建 workflow，避免 Actions 继续请求容器仓库账号密码。新增 `tests/repositoryDocs.test.mjs` 防止 README fork 声明缺失和容器发布 workflow 回流。验证：`node --test tests/*.test.mjs` 与 `desktop` 下 `node --test tests/*.test.mjs` 均通过。
