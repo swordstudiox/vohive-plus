@@ -703,7 +703,7 @@
 - [x] 将 README 中面向用户和发布示例的当前版本号更新为 `1.0.1`。
 - [x] 将 GitHub Actions 手工触发默认版本更新为 `1.0.1`。
 - [x] 增加/更新仓库文档测试，防止当前发布说明和版本号漏改。
-- [ ] 运行验证，提交，创建并推送 `v1.0.1` tag 触发 GitHub Release。
+- [x] 运行验证，提交，创建并推送 `v1.0.1` tag 触发 GitHub Release。
 
 ### 风险与边界
 
@@ -713,3 +713,4 @@
 ### 评审记录
 
 - 2026-08-04 阶段 6D 版本准备：按语义化规则选择 patch 版本 `1.0.1`；已新增 `.github/release-notes/v1.0.1.md`，更新 README 当前产物名、开发构建示例、发布示例和 `binary-release.yml` 手工触发默认版本。验证：`node --test tests/*.test.mjs` 8 项通过，`desktop` 下 `node --test tests/*.test.mjs` 8 项通过，`git diff --check` 无 whitespace 错误，仅有 Windows 换行提示。
+- 2026-08-04 阶段 6D 发布完成：提交 `0894f5701e1e21cc577b6cecc7464fb21609eabf` 已推送到 `origin/main`；注释 tag `v1.0.1` 已推送，tag object 为 `004a9fb541f8d1651dd10e75a98d719ac8a6d1f0`，指向提交 `0894f5701e1e21cc577b6cecc7464fb21609eabf`。GitHub Actions run `30906757503` 已完成且结论为 `success`，Release `VoHive Plus 1.0.1` 已发布到 `https://github.com/swordstudiox/vohive-plus/releases/tag/v1.0.1`。Release 资产包含 Windows x64 桌面便携 zip、Linux amd64/arm64/armv7 后端运行时及对应 sha256 文件。
