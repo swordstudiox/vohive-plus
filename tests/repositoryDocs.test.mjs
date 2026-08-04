@@ -75,3 +75,18 @@ test('README documents desktop runtime prerequisites and manual system dependenc
   assert.match(readme, /首次安装 WSL 发行版后/)
   assert.match(readme, /无需安装 Go、Node、Rust、pnpm、Docker 或 VirtualBox/)
 })
+
+test('repository documents the current 1.0.1 release', () => {
+  const readme = readRepoFile('README.md')
+  const releaseNotes = readRepoFile('.github/release-notes/v1.0.1.md')
+  const releaseWorkflow = readRepoFile('.github/workflows/binary-release.yml')
+
+  assert.match(readme, /vohive-plus-desktop_1\.0\.1_windows_x64\.zip/)
+  assert.match(readme, /vohive-plus-firmware_1\.0\.1_linux_amd64/)
+  assert.match(readme, /\.github\/release-notes\/v1\.0\.1\.md/)
+  assert.match(releaseNotes, /^# VoHive Plus 1\.0\.1/m)
+  assert.match(releaseNotes, /相对 `v1\.0\.0`/)
+  assert.match(releaseNotes, /删除旧容器发布 workflow/)
+  assert.match(releaseWorkflow, /default: '1\.0\.1'/)
+  assert.match(releaseWorkflow, /github\.event\.inputs\.version \|\| '1\.0\.1'/)
+})

@@ -688,3 +688,28 @@
 ### 评审记录
 
 - 2026-08-04 阶段 6C 文档补充：已补充 WSL、usbipd-win、WebView2 官方链接，并明确便携包不会下载/内置/安装系统级依赖；普通用户无需安装开发工具链或 VirtualBox。验证：`node --test tests/*.test.mjs` 7 项通过，`git diff --check` 无 whitespace 错误，仅有 Windows 换行提示；关键说明扫描已命中 README、Release note 和回归测试。
+
+## 阶段 6D：发布 VoHive Plus 1.0.1
+
+### 版本判断
+
+- [x] 当前最新 tag 为 `v1.0.0`。
+- [x] `v1.0.0` 之后的变更是修复、CI 发布边界、README/Release 文档和依赖说明，没有破坏性变更，也没有新增用户功能。
+- [x] 按 README 的语义化版本规则，本次应递增 patch，发布 `v1.0.1`。
+
+### 目标
+
+- [x] 新增 `.github/release-notes/v1.0.1.md`，说明相对 `v1.0.0` 的更新。
+- [x] 将 README 中面向用户和发布示例的当前版本号更新为 `1.0.1`。
+- [x] 将 GitHub Actions 手工触发默认版本更新为 `1.0.1`。
+- [x] 增加/更新仓库文档测试，防止当前发布说明和版本号漏改。
+- [ ] 运行验证，提交，创建并推送 `v1.0.1` tag 触发 GitHub Release。
+
+### 风险与边界
+
+- [x] 本次不改应用代码，不重新设计发布 workflow。
+- [x] 推送 tag 后由 GitHub Actions 构建后端多架构运行时和 Windows 桌面便携包，并发布到 `swordstudiox/vohive-plus/releases`。
+
+### 评审记录
+
+- 2026-08-04 阶段 6D 版本准备：按语义化规则选择 patch 版本 `1.0.1`；已新增 `.github/release-notes/v1.0.1.md`，更新 README 当前产物名、开发构建示例、发布示例和 `binary-release.yml` 手工触发默认版本。验证：`node --test tests/*.test.mjs` 8 项通过，`desktop` 下 `node --test tests/*.test.mjs` 8 项通过，`git diff --check` 无 whitespace 错误，仅有 Windows 换行提示。
