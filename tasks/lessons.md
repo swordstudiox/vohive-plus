@@ -135,3 +135,8 @@
 - 自动学习来源要分层保存，不能把用户手动确认的号码伪装成 VoWiFi 或 modem 读取值；最终展示优先级应是 `manual > vowifi > modem`，清除手动号码后再回退到自动来源。
 - 手动本机号码必须绑定当前已确认的 IMSI/ICCID；eSIM 切卡身份未确认时应拒绝写入，避免把号码写到旧卡。
 - 从 PowerShell 调 WSL 构建时不要在 Bash 片段里依赖 `$(date ...)` 这类嵌套展开；本地构建版本信息可由 PowerShell 先生成 UTC 时间，再作为普通字符串传入 Go `-ldflags`，避免 `BuildTime` 被注入为空。
+
+## 2026-08-06 Release notes 版本差异核对
+
+- 发布说明不能凭正在处理的最后一个问题或记忆手写；每次发布前必须用 `git log --oneline v上一版本..v当前版本` 核对完整提交列表，并逐项确认用户可见变更是否进入 `.github/release-notes/v当前版本.md`。
+- 如果同一版本内包含多个阶段提交，Release notes 开头和“更新内容”都要覆盖完整 tag range；不能只描述最后一个提交，否则 GitHub Release 会漏掉已经发布的修复。
