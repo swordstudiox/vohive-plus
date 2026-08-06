@@ -966,7 +966,8 @@ paths:
   /devices/{device_id}/roaming:
     patch:
       tags: [devices]
-      summary: 设置设备漫游允许状态
+      summary: 设置设备数据漫游策略
+      description: 控制蜂窝数据在漫游驻网状态下是否允许连接；不阻止模块注册网络或接收短信。
       parameters:
         - $ref: '#/components/parameters/DeviceIDPath'
       requestBody:
@@ -977,7 +978,7 @@ paths:
               $ref: '#/components/schemas/EnabledStateRequest'
       responses:
         '200':
-          description: 漫游策略已更新
+          description: 数据漫游策略已更新
           content:
             application/json:
               schema:
@@ -2626,8 +2627,6 @@ components:
           type: boolean
         vowifi_enabled:
           type: boolean
-        roaming_enabled:
-          type: boolean
         device_backend:
           type: string
           enum: [at, qmi]
@@ -2697,7 +2696,7 @@ components:
           type: boolean
         registration_state_label:
           type: string
-          enum: [registered, searching, denied, unknown]
+          enum: [registered, roaming, searching, denied, unknown]
 
     DeviceMgmtOverviewLiteItem:
       type: object
@@ -2753,7 +2752,7 @@ components:
           type: boolean
         registration_state_label:
           type: string
-          enum: [registered, searching, denied, unknown]
+          enum: [registered, roaming, searching, denied, unknown]
 
     DiscoveredDevice:
       type: object
@@ -2922,7 +2921,7 @@ components:
           type: string
         roaming_enabled:
           type: boolean
-        response:
+        message:
           type: string
 
     CardPolicy:

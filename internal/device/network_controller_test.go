@@ -46,7 +46,7 @@ func TestWorkerStartNetworkUsesController(t *testing.T) {
 	fc := &fakeController{}
 	w := &Worker{
 		netOverride: fc,
-		Config:      config.DeviceConfig{NetworkEnabled: true},
+		Config:      config.DeviceConfig{NetworkEnabled: true, RoamingEnabled: true},
 	}
 	if err := w.StartNetwork(); err != nil {
 		t.Fatalf("StartNetwork: %v", err)
@@ -59,6 +59,75 @@ func TestWorkerStartNetworkUsesController(t *testing.T) {
 	}
 	if fc.connected {
 		t.Fatal("controller.Disconnect was not called")
+	}
+}
+
+func TestWorkerStartNetworkBlocksDataWhenRoamingDisallowed(t *testing.T) {
+	fc := &fakeController{}
+	w := &Worker{
+		netOverride: fc,
+		Config:      config.DeviceConfig{NetworkEnabled: true, RoamingEnabled: false},
+	}
+	w.state.Runtime.RegStatus = 5
+
+	err := w.StartNetwork()
+	if err == nil {
+		t.Fatal("StartNetwork() error=nil, want data roaming disabled error")
+	}
+	if !strings.Contains(err.Error(), "data_roaming_disabled") {
+		t.Fatalf("StartNetwork() error=%v want data_roaming_disabled", err)
+	}
+	if fc.connected {
+		t.Fatal("controller.Connect should not be called while roaming data is disabled")
+	}
+}
+
+func TestWorkerStartNetworkBlocksDataWhenRegistrationRefreshFindsRoaming(t *testing.T) {
+	events := []string{}
+	ctrl := &startNetworkMBIMBackendStub{
+		events:  &events,
+		serving: &backend.ServingSystem{RegStatus: 5, RegStatusText: "registered-roaming", PSAttached: true},
+	}
+	fc := &fakeController{connectHook: func() {
+		events = append(events, "connect")
+	}}
+	w := &Worker{
+		ID:          "dev-mbim-roaming",
+		Config:      config.DeviceConfig{ID: "dev-mbim-roaming", DeviceBackend: backend.BackendMBIM, NetworkEnabled: true, RoamingEnabled: false},
+		Backend:     ctrl,
+		MBIMCore:    &mbimcore.Manager{},
+		netOverride: fc,
+	}
+	w.state.Runtime.RegStatus = 1
+
+	err := w.StartNetwork()
+	if err == nil {
+		t.Fatal("StartNetwork() error=nil, want data roaming disabled after registration refresh")
+	}
+	if !strings.Contains(err.Error(), "data_roaming_disabled") {
+		t.Fatalf("StartNetwork() error=%v want data_roaming_disabled", err)
+	}
+	if fc.connected {
+		t.Fatal("controller.Connect should not be called after refreshed roaming status")
+	}
+	if w.state.Runtime.RegStatus != 5 {
+		t.Fatalf("runtime reg status=%d want refreshed roaming status 5", w.state.Runtime.RegStatus)
+	}
+}
+
+func TestWorkerRuntimeServingSystemStopsConnectedDataWhenRoamingDisallowed(t *testing.T) {
+	fc := &fakeController{connected: true}
+	w := &Worker{
+		ID:          "dev-roaming-transition",
+		Config:      config.DeviceConfig{ID: "dev-roaming-transition", NetworkEnabled: true, RoamingEnabled: false},
+		netOverride: fc,
+	}
+	w.state.Runtime.RegStatus = 1
+
+	w.updateRuntimeServingSystem(&backend.ServingSystem{RegStatus: 5, RegStatusText: "registered-roaming", PSAttached: true})
+
+	if fc.connected {
+		t.Fatal("connected data network must be stopped when registration changes to roaming and data roaming is disabled")
 	}
 }
 

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { getVersion } from '@tauri-apps/api/app'
 import { runtimeService } from './services/runtime'
 import type { ActionResult, RuntimeStatus } from './types/runtime'
 
 const status = ref<RuntimeStatus | null>(null)
 const logs = ref<string[]>([])
+const appVersion = ref('...')
 const busy = ref('')
 const error = ref('')
 const notice = ref('')
@@ -47,14 +49,17 @@ async function runAction(name: string, fn: () => Promise<ActionResult>) {
   }
 }
 
-onMounted(() => refresh())
+onMounted(async () => {
+  appVersion.value = await getVersion()
+  await refresh()
+})
 </script>
 
 <template>
   <main class="shell">
     <section class="topbar">
       <div>
-        <h1>VoHive Plus</h1>
+        <h1>VoHive Plus v{{ appVersion }}</h1>
         <p>Windows 桌面运行壳 · WSL2 路线</p>
       </div>
       <button :disabled="!!busy" @click="refresh()">刷新</button>
@@ -65,7 +70,10 @@ onMounted(() => refresh())
         <h2>运行环境</h2>
         <div class="row"><span>WSL2</span><b>{{ status.wsl.available ? '可用' : '不可用' }}</b></div>
         <div class="hint">{{ status.wsl.path || status.wsl.message }}</div>
-        <button :disabled="!!busy || !status.wsl.available" @click="runAction('启动 WSL', runtimeService.startWsl)">启动 WSL</button>
+        <div class="actions">
+          <button :disabled="!!busy || !status.wsl.available" @click="runAction('启动 WSL', runtimeService.startWsl)">启动 WSL</button>
+          <button :disabled="!!busy || !status.wsl.available" @click="runAction('停止 WSL', runtimeService.stopWsl)">停止 WSL</button>
+        </div>
         <div class="row"><span>usbipd-win</span><b>{{ status.usbipd.available ? '可用' : '不可用' }}</b></div>
         <div class="hint">{{ status.usbipd.path || status.usbipd.message }}</div>
       </div>

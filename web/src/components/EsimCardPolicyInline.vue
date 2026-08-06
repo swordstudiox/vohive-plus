@@ -118,6 +118,17 @@ const {
     emit('policyChanged')
   }
 })
+
+const registrationAndSmsEnabled = computed({
+  get: () => !local.value.airplane_enabled,
+  set: (enabled: boolean) => {
+    local.value.airplane_enabled = !enabled
+  }
+})
+
+async function onRegistrationAndSmsToggle(rawVal: string | number | boolean) {
+  await onAirplaneToggle(!(rawVal as boolean))
+}
 </script>
 
 <template>
@@ -132,9 +143,9 @@ const {
     <template v-else>
       <div v-if="hint" class="text-[11px] text-amber-600 dark:text-amber-400">{{ hint }}</div>
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
-        <!-- 网络 -->
+        <!-- 蜂窝数据 -->
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
-          <span class="text-sm text-gray-700 dark:text-gray-200">网络</span>
+          <span class="text-sm text-gray-700 dark:text-gray-200">蜂窝数据</span>
           <div class="flex items-center gap-2">
             <span v-if="networkFailed" class="text-xs text-orange-500">{{ networkError }}</span>
             <el-icon v-if="networkPending" class="animate-spin text-gray-400"><Loading /></el-icon>
@@ -158,22 +169,22 @@ const {
             />
           </div>
         </div>
-        <!-- 飞行 -->
+        <!-- 驻网与短信 -->
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
-          <span class="text-sm text-gray-700 dark:text-gray-200">飞行</span>
+          <span class="text-sm text-gray-700 dark:text-gray-200">驻网与短信</span>
           <div class="flex items-center gap-2">
             <span v-if="airplaneFailed" class="text-xs text-orange-500">{{ airplaneError }}</span>
             <el-icon v-if="airplanePending" class="animate-spin text-gray-400"><Loading /></el-icon>
             <el-switch
-              v-model="local.airplane_enabled"
+              v-model="registrationAndSmsEnabled"
               :disabled="local.vowifi_enabled || airplanePending"
-              @change="onAirplaneToggle"
+              @change="onRegistrationAndSmsToggle"
             />
           </div>
         </div>
-        <!-- 漫游 -->
+        <!-- 数据漫游 -->
         <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-white dark:bg-white/5">
-          <span class="text-sm text-gray-700 dark:text-gray-200">允许漫游</span>
+          <span class="text-sm text-gray-700 dark:text-gray-200">数据漫游</span>
           <div class="flex items-center gap-2">
             <span v-if="roamingFailed" class="text-xs text-orange-500">{{ roamingError }}</span>
             <el-icon v-if="roamingPending" class="animate-spin text-gray-400"><Loading /></el-icon>

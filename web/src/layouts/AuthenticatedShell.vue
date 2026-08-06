@@ -6,6 +6,7 @@ import { Expand, Fold } from '@element-plus/icons-vue'
 import LoadingScreen from '../components/LoadingScreen.vue'
 import ErrorBoundary from '../components/ErrorBoundary.vue'
 import SwitchDark from '../components/SwitchDark.vue'
+import { systemService } from '../services/system'
 import { debugCollector } from '../debug/collector'
 import {
   Mail24Regular,
@@ -33,6 +34,7 @@ const collapsed = ref(false)
 const isMobile = ref(false)
 const drawerOpen = ref(false)
 const debugOpen = ref(false)
+const backendVersion = ref('...')
 const DebugPanel = defineAsyncComponent(() => import('../components/DebugPanel.vue'))
 
 const menuItems = [
@@ -82,8 +84,22 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+async function loadBackendVersion() {
+  try {
+    const info = await systemService.getInfo()
+    if (info.ok) {
+      backendVersion.value = info.data.version || 'Unknown'
+    } else {
+      backendVersion.value = 'Unknown'
+    }
+  } catch {
+    backendVersion.value = 'Unknown'
+  }
+}
+
 onMounted(() => {
   syncIsMobile()
+  void loadBackendVersion()
   window.addEventListener('resize', syncIsMobile, { passive: true })
 
   const saved = localStorage.getItem('debug_panel_open')
@@ -132,7 +148,7 @@ const activePath = computed(() => route.path)
       <div class="h-14 px-4 flex items-center" :class="collapsed ? 'justify-center px-0' : ''">
         <div class="sidebar-brand-icon">V</div>
         <div v-if="!collapsed" class="ml-3">
-          <div class="sidebar-brand-title">VoHive</div>
+          <div class="sidebar-brand-title">VoHive v{{ backendVersion }}</div>
         </div>
       </div>
 
@@ -170,7 +186,7 @@ const activePath = computed(() => route.path)
         <div class="h-16 px-4 flex items-center">
           <div class="sidebar-brand-icon">V</div>
           <div class="ml-3">
-            <div class="sidebar-brand-title">VoHive</div>
+            <div class="sidebar-brand-title">VoHive v{{ backendVersion }}</div>
           </div>
         </div>
 

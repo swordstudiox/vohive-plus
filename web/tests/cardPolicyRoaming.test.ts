@@ -38,13 +38,18 @@ test('card policy composable tracks roaming as independent switch', () => {
   assert.match(toggles, /onRoamingToggle/)
 })
 
-test('main card policy panel renders allow-roaming live switch', () => {
-  assert.match(cardPolicyPanel, /允许漫游/)
+test('main card policy panel renders cellular registration, cellular data, and data roaming switches', () => {
+  assert.match(cardPolicyPanel, /驻网与短信/)
+  assert.match(cardPolicyPanel, /蜂窝数据/)
+  assert.match(cardPolicyPanel, /数据漫游/)
+  assert.doesNotMatch(cardPolicyPanel, /关闭后模块不会注册漫游网络/)
   assert.match(cardPolicyPanel, /devicesService\.setRoaming/)
   assert.match(cardPolicyPanel, /@change="onRoamingToggle"/)
 })
 
-test('eSIM inline card policy renders allow-roaming switch', () => {
-  assert.match(esimCardPolicyInline, /允许漫游/)
+test('eSIM inline card policy renders cellular registration, cellular data, and data roaming switches', () => {
+  assert.match(esimCardPolicyInline, /驻网与短信/)
+  assert.match(esimCardPolicyInline, /蜂窝数据/)
+  assert.match(esimCardPolicyInline, /数据漫游/)
   assert.match(esimCardPolicyInline, /onRoamingToggle/)
 })

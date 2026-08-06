@@ -32,6 +32,7 @@ pub fn run() {
             commands::detect,
             commands::status,
             commands::start_wsl,
+            commands::stop_wsl,
             commands::attach_usb,
             commands::prepare_usb,
             commands::start_backend,

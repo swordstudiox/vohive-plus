@@ -9,7 +9,7 @@ on:
       version:
         description: 'Release version, with or without a leading v'
         required: false
-        default: '1.0.1'
+        default: '1.0.2'
       enable_upx:
         description: 'Enable UPX compression for Linux runtime binaries (true/false)'
         required: false
@@ -39,7 +39,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             RAW_VERSION="${GITHUB_REF_NAME}"
           else
-            RAW_VERSION="${{ github.event.inputs.version || '1.0.1' }}"
+            RAW_VERSION="${{ github.event.inputs.version || '1.0.2' }}"
           fi
           VERSION="${RAW_VERSION#v}"
           TAG="v${VERSION}"
@@ -172,6 +172,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Update desktop app version
+        shell: pwsh
+        run: |
+          $version = "${{ needs.vars.outputs.version }}"
+          $packagePath = "desktop\package.json"
+          $tauriPath = "desktop\src-tauri\tauri.conf.json"
+          $cargoTomlPath = "desktop\src-tauri\Cargo.toml"
+          $cargoLockPath = "desktop\src-tauri\Cargo.lock"
+
+          $packageJson = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
+          $packageJson.version = $version
+          $packageJson | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $packagePath -Encoding utf8
+
+          $tauriJson = Get-Content -Raw -LiteralPath $tauriPath | ConvertFrom-Json
+          $tauriJson.version = $version
+          $tauriJson.app.windows[0].title = "VoHive Plus v$version"
+          $tauriJson | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $tauriPath -Encoding utf8
+
+          $cargoToml = Get-Content -LiteralPath $cargoTomlPath
+          $inPackageSection = $false
+          for ($i = 0; $i -lt $cargoToml.Count; $i++) {
+            if ($cargoToml[$i] -match '^\s*\[package\]\s*$') {
+              $inPackageSection = $true
+              continue
+            }
+            if ($cargoToml[$i] -match '^\s*\[') {
+              $inPackageSection = $false
+            }
+            if ($inPackageSection -and $cargoToml[$i] -match '^\s*version\s*=') {
+              $cargoToml[$i] = "version = `"$version`""
+              $inPackageSection = $false
+            }
+          }
+          Set-Content -LiteralPath $cargoTomlPath -Value $cargoToml -Encoding utf8
+
+          $cargoLock = Get-Content -LiteralPath $cargoLockPath
+          $inDesktopPackage = $false
+          for ($i = 0; $i -lt $cargoLock.Count; $i++) {
+            if ($cargoLock[$i] -eq '[[package]]') {
+              $inDesktopPackage = $false
+              continue
+            }
+            if ($cargoLock[$i] -eq 'name = "vohive-plus-desktop"') {
+              $inDesktopPackage = $true
+              continue
+            }
+            if ($inDesktopPackage -and $cargoLock[$i] -match '^version = ') {
+              $cargoLock[$i] = "version = `"$version`""
+              $inDesktopPackage = $false
+            }
+          }
+          Set-Content -LiteralPath $cargoLockPath -Value $cargoLock -Encoding utf8
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4

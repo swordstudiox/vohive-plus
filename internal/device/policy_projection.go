@@ -42,7 +42,7 @@ func (p *Pool) resolveAndApplyPolicy(worker *Worker, reason string) policyApplyR
 	if p == nil || worker == nil || p.policyResolver == nil {
 		return policyApplyResult{}
 	}
-	iccid := worker.CurrentICCID()
+	iccid := worker.ConfirmedICCID()
 	if iccid == "" {
 		logger.Info("跳过策略投影：ICCID 未就绪", "device", worker.ID, "reason", reason)
 		return policyApplyResult{Reason: "iccid_empty"}
@@ -56,10 +56,6 @@ func (p *Pool) resolveAndApplyPolicy(worker *Worker, reason string) policyApplyR
 	logger.Info("已投影卡策略", "device", worker.ID, "iccid", iccid,
 		"network", pol.NetworkEnabled, "vowifi", pol.VoWiFiEnabled,
 		"airplane", worker.Config.AirplaneEnabled, "roaming", pol.RoamingEnabled, "reason", reason)
-
-	if err := p.applyRoamingPreference(worker, pol.RoamingEnabled, reason); err != nil {
-		logger.Warn("应用漫游偏好失败", "device", worker.ID, "reason", reason, "err", err)
-	}
 
 	// 三态分支：VoWiFi / 纯飞行 / 在线(含连网)。射频模式按策略真正切换，
 	// 补齐此前“airplane 字段被投影但从不执行”的缺口。
@@ -141,7 +137,7 @@ func (p *Pool) CurrentICCIDForDevice(deviceID string) string {
 	if w == nil {
 		return ""
 	}
-	return w.CurrentICCID()
+	return w.ConfirmedICCID()
 }
 
 // SetPolicyResolver 注入卡策略解析器（cmd/vohive 启动时调用）。

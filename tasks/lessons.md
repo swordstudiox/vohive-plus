@@ -105,3 +105,20 @@
 - `usbipd-win` 是系统级 USB/IP 驱动和 Windows 服务，不应随项目便携包私自内置或分发过期安装包；README 应提供官方项目和 Release 链接，让用户从官方渠道安装。
 - Tauri 便携 exe 仍依赖 Windows WebView2 Runtime。即使大多数 Windows 10/11 已内置，也应在普通用户环境要求里说明精简系统需要手动安装。
 - 首次安装 WSL 发行版后需要先完成 Linux 用户初始化；仅执行 `wsl --install` 不代表发行版已可被桌面壳直接使用。
+
+## 2026-08-05 漫游语义与版本辨识
+
+- “漫游注册”和“数据漫游”不能混为一谈。`RegStatus=5` 表示模块已在漫游网络驻网，普通用户的“数据漫游”开关应控制数据连接/代理出站，不应阻止驻网或收短信。
+- `AT+QCFG="roamservice"` 是模组侧注册漫游服务控制，语义接近“是否允许注册漫游网络”，不等同于手机设置里的“数据漫游”；普通卡策略不要自动下发它，只保留为高级 AT 能力。
+- 切卡期间 `TargetICCID` 不等于已确认当前卡。写入卡策略、展示信号/运营商/漫游状态时必须以 confirmed ICCID 或身份确认状态为准，避免切卡失败后仍显示旧卡运行态。
+- 切卡旧运行态不只会出现在设备管理页；dashboard、lite、stream、status detail 等所有展示运行态的 API 都要一起检查，否则用户仍会在首页看到旧信号、旧运营商或旧漫游状态。
+- live 策略开关一旦包含硬件动作，就必须按事务思路处理：先保存意图，硬件动作失败时回滚策略和 worker 展示态，并把真实错误返回给 UI，不能让数据库/UI 与模块实际状态分裂。
+- “数据漫游关闭”不能只拦截用户点击启动数据网络的瞬间；设备可能在数据面已连接后才进入 `RegStatus=5`，运行态刷新、serving system 更新、健康同步路径都要触发断开守卫。
+- 桌面壳不能只看自己持有的 child 句柄判断后端进程。从 Release 版接管已有 WSL 后端时，要探测 WSL 内 `/opt/vohive/bin/vohive` 进程，并用 `/ping` 健康检查作为兜底。
+- WSL 状态刷新里的“进 WSL 探测进程”本身可能启动已停止的发行版。任何 `wsl.exe -d ... --exec ...` 调用前都要先用 `wsl -l -v` 确认发行版 Running，尤其是 `停止 WSL` 后返回状态时。
+- 不只 `连接 USB 到 WSL` 会隐式启动 WSL；`准备 WSL USB`、`停止后端`、状态探测等任何 `wsl -d <distro> --exec` 调用都可能在发行版 stopped 时反向启动 WSL，必须先 preflight。
+- 桌面壳 `/ping` 健康检查不能只找响应文本里的 `200`；要解析 HTTP 状态码并确认 body 是 VoHive 的 `pong` 响应，否则其它本机服务占用 7575 会让后端状态和启动按钮误判。
+- `roaming_enabled` 是卡策略字段，不是设备配置字段；OpenAPI、Go DTO、前端类型三者必须同步，否则生成客户端或文档用户会误以为可以在设备配置层修改数据漫游。
+- Release zip 版本、Tauri app version、Rust crate version、窗口标题、README 和 release notes 必须同步，避免同一个版本号对应不同内容，导致用户无法判断当前打开的是哪个软件。
+- Release workflow 戳 Rust `Cargo.toml` 版本号时不要用全局正则替换所有 `version =`；应只在 `[package]` 段内替换当前 crate 版本，避免误改 dependency、workspace 或其它表。
+- 当前 Linux 后端运行体没有 `--version` 参数；构建后验证版本注入应通过运行中的版本 API、Release 资产名、ldflags 记录或二进制字符串检查，不要把 `--version` 失败误判成编译失败。

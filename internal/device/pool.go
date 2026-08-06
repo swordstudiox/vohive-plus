@@ -504,6 +504,9 @@ func (w *Worker) RefreshRuntime(ctx context.Context, reason string) error {
 		w.state.Meta.Healthy = healthy
 	}
 	w.cacheMu.Unlock()
+	if updated {
+		w.enforceDataRoamingPolicyAfterRuntimeUpdate(reason)
+	}
 	return nil
 }
 
@@ -1178,6 +1181,12 @@ func (p *Pool) applyNetworkPreference(worker *Worker) error {
 		if p.IsVoWiFiActive(worker.ID) {
 			logger.Info("设备当前处于 VoWiFi 模式，跳过自动连接数据网络", "device", worker.ID)
 			return nil
+		}
+		if err := worker.ValidateDataRoamingAllowed(); err != nil {
+			if nc.IsConnected() {
+				_ = worker.StopNetwork()
+			}
+			return err
 		}
 		if nc.IsConnected() {
 			p.refreshIPs(worker, true)
@@ -1928,6 +1937,18 @@ func (p *Pool) SetWorkerRoamingPolicy(deviceID string, roamingEnabled bool) *Wor
 	return w
 }
 
+// RestoreWorkerConfig 恢复 worker 运行时展示配置快照，用于 API 热切失败后的状态回滚。
+func (p *Pool) RestoreWorkerConfig(deviceID string, cfg config.DeviceConfig) *Worker {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	w := p.workers[deviceID]
+	if w == nil {
+		return nil
+	}
+	w.Config = cfg
+	return w
+}
+
 func (p *Pool) UpdateWorkerConfig(id string, cfg config.DeviceConfig, applyAll bool) bool {
 	p.mu.Lock()
 	w := p.workers[id]
@@ -2077,6 +2098,9 @@ func (w *Worker) StartNetwork() error {
 		if err := w.EnsureMBIMRegistration(context.Background(), true); err != nil {
 			return err
 		}
+	}
+	if err := w.ValidateDataRoamingAllowed(); err != nil {
+		return err
 	}
 	return nc.Connect()
 }

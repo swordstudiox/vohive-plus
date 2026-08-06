@@ -7,6 +7,7 @@ import (
 
 	"github.com/swordstudiox/vohive-plus/internal/backend"
 	"github.com/swordstudiox/vohive-plus/internal/modem"
+	"github.com/swordstudiox/vohive-plus/pkg/logger"
 )
 
 func RoamingServiceATCommand(enabled bool) string {
@@ -18,6 +19,43 @@ func RoamingServiceATCommand(enabled bool) string {
 
 func ExecuteRoamingATForWorker(w *Worker, enabled bool, timeout time.Duration) (string, error) {
 	return executeATForRoaming(w, RoamingServiceATCommand(enabled), timeout)
+}
+
+func (w *Worker) ValidateDataRoamingAllowed() error {
+	if w == nil {
+		return fmt.Errorf("network_not_available")
+	}
+	if w.Config.RoamingEnabled {
+		return nil
+	}
+	w.cacheMu.RLock()
+	regStatus := w.state.Runtime.RegStatus
+	w.cacheMu.RUnlock()
+	if regStatus == 5 {
+		return fmt.Errorf("data_roaming_disabled: 当前处于漫游注册，已关闭数据漫游")
+	}
+	return nil
+}
+
+func (w *Worker) StopNetworkIfDataRoamingDisallowed() error {
+	if w == nil {
+		return nil
+	}
+	if err := w.ValidateDataRoamingAllowed(); err == nil {
+		return nil
+	}
+	nc := w.NetworkController()
+	if nc == nil || !nc.IsConnected() {
+		w.clearCachedIP()
+		return nil
+	}
+	return w.StopNetwork()
+}
+
+func (w *Worker) enforceDataRoamingPolicyAfterRuntimeUpdate(reason string) {
+	if err := w.StopNetworkIfDataRoamingDisallowed(); err != nil {
+		logger.Warn("数据漫游已关闭但停止漫游数据网络失败", "device", w.ID, "reason", reason, "err", err)
+	}
 }
 
 func executeATForRoaming(w *Worker, cmd string, timeout time.Duration) (string, error) {
@@ -56,16 +94,4 @@ func executeTransientRoamingAT(port, cmd string, timeout time.Duration) (string,
 	}
 	defer session.Close()
 	return session.Execute(cmd, timeout)
-}
-
-func (p *Pool) applyRoamingPreference(w *Worker, enabled bool, reason string) error {
-	if w == nil {
-		return nil
-	}
-	w.Config.RoamingEnabled = enabled
-	if strings.TrimSpace(w.ResolvedATPort()) == "" && (w.Modem == nil || !w.Modem.HasATPort()) {
-		return nil
-	}
-	_, err := ExecuteRoamingATForWorker(w, enabled, 5*time.Second)
-	return err
 }

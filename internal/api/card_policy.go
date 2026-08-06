@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swordstudiox/vohive-plus/internal/config"
 	"github.com/swordstudiox/vohive-plus/internal/db"
 )
 
@@ -17,7 +18,7 @@ func (s *Server) patchCardPolicyForDevice(deviceID string, mutate func(*db.CardP
 	if worker == nil {
 		return "", false, fmt.Errorf("设备未找到")
 	}
-	iccid = worker.CurrentICCID()
+	iccid = worker.ConfirmedICCID()
 	if iccid == "" {
 		return "", false, nil
 	}
@@ -32,6 +33,79 @@ func (s *Server) patchCardPolicyForDevice(deviceID string, mutate func(*db.CardP
 		return iccid, false, fmt.Errorf("保存卡策略失败: %w", err)
 	}
 	return iccid, true, nil
+}
+
+type deviceCardPolicyPatch struct {
+	server         *Server
+	deviceID       string
+	ICCID          string
+	previous       db.CardPolicy
+	previousConfig config.DeviceConfig
+}
+
+func (p *deviceCardPolicyPatch) Rollback() error {
+	if p == nil {
+		return nil
+	}
+	if p.server != nil && p.server.pool != nil {
+		p.server.pool.RestoreWorkerConfig(p.deviceID, p.previousConfig)
+	}
+	return db.UpsertCardPolicy(p.previous)
+}
+
+func rollbackCardPolicyPatchMessage(patch *deviceCardPolicyPatch) string {
+	if patch == nil {
+		return ""
+	}
+	if err := patch.Rollback(); err != nil {
+		return "；回滚卡策略失败: " + err.Error()
+	}
+	return ""
+}
+
+func (s *Server) patchCardPolicyForDeviceTxOrRespond(c *gin.Context, deviceID, conflictMessage string, mutate func(*db.CardPolicy)) (*deviceCardPolicyPatch, bool) {
+	if s.pool == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
+		return nil, false
+	}
+	worker := s.pool.GetWorker(deviceID)
+	if worker == nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到或未运行"})
+		return nil, false
+	}
+	iccid := worker.ConfirmedICCID()
+	if iccid == "" {
+		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": conflictMessage})
+		return nil, false
+	}
+	previous, err := db.ResolveCardPolicy(iccid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "获取卡策略失败: " + err.Error()})
+		return nil, false
+	}
+	next := previous
+	mutate(&next)
+	next.Source = "user"
+	db.NormalizeCardPolicy(&next)
+	if err := db.UpsertCardPolicy(next); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "保存卡策略失败: " + err.Error()})
+		return nil, false
+	}
+	return &deviceCardPolicyPatch{
+		server:         s,
+		deviceID:       deviceID,
+		ICCID:          iccid,
+		previous:       previous,
+		previousConfig: worker.Config,
+	}, true
+}
+
+func (s *Server) patchCardPolicyForDeviceOrRespond(c *gin.Context, deviceID, conflictMessage string, mutate func(*db.CardPolicy)) (iccid string, ok bool) {
+	patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, deviceID, conflictMessage, mutate)
+	if !ok {
+		return "", false
+	}
+	return patch.ICCID, true
 }
 
 func (s *Server) handleGetCardPolicy(c *gin.Context) {

@@ -41,6 +41,45 @@ pub fn start_wsl(state: State<'_, AppState>) -> ActionResult {
 }
 
 #[tauri::command]
+pub fn stop_wsl(state: State<'_, AppState>) -> ActionResult {
+    {
+        let mut guard = state.wsl_keepalive.lock().expect("wsl mutex poisoned");
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.try_wait();
+            state.logs.push("已释放 WSL 保活进程");
+        }
+    }
+
+    match wsl::current_distro_running() {
+        Ok(false) => action(true, "WSL 已是停止状态", Some(build_status(&state)), None),
+        Ok(true) => match wsl::terminate_distro(Duration::from_secs(8)) {
+            Ok(out) if out.status.success() => {
+                action(true, "WSL 已停止，WSL 内后端也会随之退出", Some(build_status(&state)), None)
+            }
+            Ok(out) => action(
+                false,
+                format!("停止 WSL 失败: {}", clean_output(&out.stderr)),
+                Some(build_status(&state)),
+                Some(format!("\"{}\" --terminate {}", wsl::executable(), wsl::DISTRO)),
+            ),
+            Err(err) => action(
+                false,
+                format!("停止 WSL 失败: {err}"),
+                Some(build_status(&state)),
+                Some(format!("\"{}\" --terminate {}", wsl::executable(), wsl::DISTRO)),
+            ),
+        },
+        Err(err) => action(
+            false,
+            format!("检查 WSL 运行状态失败: {err}"),
+            Some(build_status(&state)),
+            Some(format!("\"{}\" --terminate {}", wsl::executable(), wsl::DISTRO)),
+        ),
+    }
+}
+
+#[tauri::command]
 pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
     let usbipd_status = usbipd::detect_usbipd();
     let Some(path) = usbipd_status.path.clone() else {
@@ -108,6 +147,21 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
 
 #[tauri::command]
 pub fn prepare_usb(state: State<'_, AppState>) -> ActionResult {
+    let wsl_running = match wsl::current_distro_running() {
+        Ok(running) => running,
+        Err(err) => {
+            return action(
+                false,
+                format!("检查 WSL 运行状态失败: {err}"),
+                Some(build_status(&state)),
+                None,
+            )
+        }
+    };
+    if let Err(message) = wsl_required_action_preflight("准备 WSL USB", wsl_running) {
+        return action(false, message, Some(build_status(&state)), None);
+    }
+
     match wsl::run_root(&["--exec", "/opt/vohive/bin/vohive-usb-prepare.sh"]) {
         Ok(out) if out.status.success() => {
             state.logs.push(clean_output(&out.stdout));
@@ -168,8 +222,6 @@ pub fn start_backend(app: AppHandle, state: State<'_, AppState>) -> ActionResult
 
 #[tauri::command]
 pub fn stop_backend(state: State<'_, AppState>) -> ActionResult {
-    let stop_result = wsl::run_root_shell_timeout(backend_stop_script(), Duration::from_secs(8));
-
     let mut guard = state.backend.lock().expect("backend mutex poisoned");
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
@@ -177,6 +229,23 @@ pub fn stop_backend(state: State<'_, AppState>) -> ActionResult {
         state.logs.push("已释放桌面壳持有的 WSL 子进程");
     }
     drop(guard);
+
+    let wsl_running = match wsl::current_distro_running() {
+        Ok(running) => running,
+        Err(err) => {
+            return action(
+                false,
+                format!("检查 WSL 运行状态失败: {err}"),
+                Some(build_status(&state)),
+                None,
+            )
+        }
+    };
+    if let Err(message) = wsl_required_action_preflight("停止 WSL 后端", wsl_running) {
+        return action(false, message, Some(build_status(&state)), None);
+    }
+
+    let stop_result = wsl::run_root_shell_timeout(backend_stop_script(), Duration::from_secs(8));
 
     match stop_result {
         Ok(out) if out.status.success() => {
@@ -225,18 +294,19 @@ fn build_status(state: &State<'_, AppState>) -> RuntimeStatus {
         .as_deref()
         .map(usbipd::list_devices)
         .unwrap_or_default();
-    let backend = backend_status(state);
+    let health = check_health();
+    let backend = backend_status(state, health.ok);
     RuntimeStatus {
         route: "wsl2".to_string(),
         wsl,
         usbipd,
         devices,
         backend,
-        health: check_health(),
+        health,
     }
 }
 
-fn backend_status(state: &State<'_, AppState>) -> BackendStatus {
+fn backend_status(state: &State<'_, AppState>, health_ok: bool) -> BackendStatus {
     let mut guard = state.backend.lock().expect("backend mutex poisoned");
     if let Some(child) = guard.as_mut() {
         match child.try_wait() {
@@ -267,11 +337,39 @@ fn backend_status(state: &State<'_, AppState>) -> BackendStatus {
             }
         }
     } else {
-        BackendStatus {
-            running: false,
-            pid: None,
-            message: None,
+        external_backend_status(health_ok, wsl::vohive_backend_pids(Duration::from_secs(3)))
+            .unwrap_or(BackendStatus {
+                running: false,
+                pid: None,
+                message: None,
+            })
+    }
+}
+
+fn external_backend_status(
+    health_ok: bool,
+    wsl_pids: Result<Vec<u32>, String>,
+) -> Option<BackendStatus> {
+    match wsl_pids {
+        Ok(pids) if !pids.is_empty() => {
+            let pid = pids[0];
+            Some(BackendStatus {
+                running: true,
+                pid: Some(pid),
+                message: Some(format!("检测到 WSL 后端进程 pid={pid}")),
+            })
         }
+        Ok(_) if health_ok => Some(BackendStatus {
+            running: true,
+            pid: None,
+            message: Some("健康检查正常，后端可能由外部进程提供".to_string()),
+        }),
+        Err(err) if health_ok => Some(BackendStatus {
+            running: true,
+            pid: None,
+            message: Some(format!("健康检查正常，但读取 WSL 后端进程失败: {err}")),
+        }),
+        _ => None,
     }
 }
 
@@ -330,6 +428,15 @@ fn usb_attach_preflight(step: UsbAttachStep, wsl_running: bool) -> Result<(), St
         return Err("请先点击“启动 WSL”，待 WSL 运行后再连接 USB 到 WSL。".to_string());
     }
     Ok(())
+}
+
+fn wsl_required_action_preflight(action_label: &str, wsl_running: bool) -> Result<(), String> {
+    if wsl_running {
+        return Ok(());
+    }
+    Err(format!(
+        "WSL 未运行，无法执行{action_label}；请先点击“启动 WSL”后再重试。"
+    ))
 }
 
 fn validate_vohive_resources(bin: &Path, cfg: &Path, script: &Path) -> Result<(), String> {
@@ -458,8 +565,8 @@ echo killed"#
 #[cfg(test)]
 mod tests {
     use super::{
-        backend_stop_script, usb_attach_preflight, usb_attach_step, validate_vohive_resources,
-        UsbAttachStep,
+        backend_stop_script, external_backend_status, usb_attach_preflight, usb_attach_step,
+        validate_vohive_resources, wsl_required_action_preflight, UsbAttachStep,
     };
     use crate::models::UsbDevice;
     use std::fs;
@@ -469,6 +576,28 @@ mod tests {
         let script = backend_stop_script();
         assert!(script.contains("pgrep -f '^/opt/vohive/bin/vohive( |$)'"));
         assert!(!script.contains("pkill -f"));
+    }
+
+    #[test]
+    fn external_backend_status_uses_wsl_process_pid() {
+        let status = external_backend_status(false, Ok(vec![4242]))
+            .expect("WSL process should make backend running");
+
+        assert!(status.running);
+        assert_eq!(status.pid, Some(4242));
+        assert!(status.message.unwrap_or_default().contains("WSL"));
+    }
+
+    #[test]
+    fn external_backend_status_uses_health_when_pid_probe_is_unavailable() {
+        let status = external_backend_status(true, Err("pgrep timeout".to_string()))
+            .expect("healthy backend should be considered running");
+
+        assert!(status.running);
+        assert_eq!(status.pid, None);
+        let message = status.message.unwrap_or_default();
+        assert!(message.contains("健康检查正常"));
+        assert!(message.contains("pgrep timeout"));
     }
 
     #[test]
@@ -503,6 +632,24 @@ mod tests {
     #[test]
     fn usb_attach_preflight_allows_already_attached_without_running_wsl_check() {
         assert!(usb_attach_preflight(UsbAttachStep::AlreadyAttached, false).is_ok());
+    }
+
+    #[test]
+    fn prepare_usb_preflight_requires_user_started_wsl() {
+        let err = wsl_required_action_preflight("准备 WSL USB", false)
+            .expect_err("prepare USB must not auto-start WSL");
+
+        assert!(err.contains("启动 WSL"));
+        assert!(err.contains("准备 WSL USB"));
+    }
+
+    #[test]
+    fn stop_backend_preflight_does_not_start_stopped_wsl() {
+        let err = wsl_required_action_preflight("停止 WSL 后端", false)
+            .expect_err("stop backend must not auto-start WSL");
+
+        assert!(err.contains("WSL 未运行"));
+        assert!(err.contains("停止 WSL 后端"));
     }
 
     #[test]

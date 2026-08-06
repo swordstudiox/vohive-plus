@@ -8,6 +8,9 @@ export const runtimeService = {
   startWsl() {
     return invoke<ActionResult>('start_wsl')
   },
+  stopWsl() {
+    return invoke<ActionResult>('stop_wsl')
+  },
   attachUsb() {
     return invoke<ActionResult>('attach_usb')
   },

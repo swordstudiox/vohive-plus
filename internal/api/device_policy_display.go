@@ -27,7 +27,7 @@ func cardPolicyFromDeviceConfig(iccid string, cfg config.DeviceConfig) db.CardPo
 func (s *Server) currentEffectiveDevicePolicy(deviceID string) (iccid string, network, vowifi bool, ipVersion, apn string) {
 	if s.pool != nil {
 		if w := s.pool.GetWorker(deviceID); w != nil {
-			return w.CurrentICCID(), w.Config.NetworkEnabled, w.Config.VoWiFiEnabled, w.Config.IPVersion, w.Config.APN
+			return w.ConfirmedICCID(), w.Config.NetworkEnabled, w.Config.VoWiFiEnabled, w.Config.IPVersion, w.Config.APN
 		}
 	}
 	off := resolveOfflineDevicePolicy(deviceID)

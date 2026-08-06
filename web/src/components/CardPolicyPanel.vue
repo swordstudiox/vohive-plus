@@ -101,6 +101,17 @@ const {
   }
 })
 
+const registrationAndSmsEnabled = computed({
+  get: () => !local.value.airplane_enabled,
+  set: (enabled: boolean) => {
+    local.value.airplane_enabled = !enabled
+  }
+})
+
+async function onRegistrationAndSmsToggle(rawVal: string | number | boolean) {
+  await onAirplaneToggle(!(rawVal as boolean))
+}
+
 const sourceLabel = computed(() => {
   if (!props.policy) return ''
   return props.policy.source === 'user' ? '手动设置' : '自动默认'
@@ -150,24 +161,24 @@ const sourceLabel = computed(() => {
             <el-option label="IPv6" value="v6" />
             <el-option label="IPv4 + IPv6（双栈）" value="v4v6" />
           </el-select>
-          <div class="text-xs text-gray-400">下次开启网络时生效</div>
+          <div class="text-xs text-gray-400">下次开启蜂窝数据时生效</div>
         </div>
 
         <!-- APN -->
         <div class="space-y-1">
           <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">APN（可选）</label>
           <el-input v-model="apn" placeholder="留空自动识别" :disabled="!canToggle" />
-          <div class="text-xs text-gray-400">下次开启网络时生效</div>
+          <div class="text-xs text-gray-400">下次开启蜂窝数据时生效</div>
         </div>
-        <!-- 开启网络 -->
+        <!-- 蜂窝数据 -->
         <div
           class="ui-panel-muted p-3 space-y-1"
           :class="local.network_enabled ? 'border border-emerald-300 bg-emerald-50/50 dark:bg-emerald-900/20' : ''"
         >
           <div class="flex items-center justify-between">
             <div>
-              <div class="text-sm font-bold text-gray-800 dark:text-gray-100">开启网络</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">VoWiFi/飞行开启时不可用</div>
+              <div class="text-sm font-bold text-gray-800 dark:text-gray-100">蜂窝数据</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">控制数据连接/代理出站，不影响驻网和短信</div>
             </div>
             <div class="flex items-center gap-2">
               <span v-if="networkFailed" class="text-xs text-orange-500 dark:text-orange-400">{{ networkError }}</span>
@@ -203,40 +214,40 @@ const sourceLabel = computed(() => {
           </div>
         </div>
 
-        <!-- 飞行模式 -->
+        <!-- 驻网与短信 -->
         <div
           class="ui-panel-muted p-3 space-y-1"
-          :class="local.airplane_enabled ? 'border border-sky-300 bg-sky-50/50 dark:bg-sky-900/20' : ''"
+          :class="registrationAndSmsEnabled ? 'border border-sky-300 bg-sky-50/50 dark:bg-sky-900/20' : ''"
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <div>
-                <div class="text-sm font-bold text-gray-800 dark:text-gray-100">飞行模式</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">射频关闭，断网；VoWiFi 开启时由其接管</div>
+                <div class="text-sm font-bold text-gray-800 dark:text-gray-100">驻网与短信</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">关闭后射频关闭，模块不驻网也不收短信</div>
               </div>
             </div>
             <div class="flex items-center gap-2">
               <span v-if="airplaneFailed" class="text-xs text-orange-500 dark:text-orange-400">{{ airplaneError }}</span>
               <el-icon v-if="airplanePending" class="animate-spin text-gray-400"><Loading /></el-icon>
               <el-switch
-                v-model="local.airplane_enabled"
+                v-model="registrationAndSmsEnabled"
                 :disabled="!canToggle || local.vowifi_enabled || airplanePending"
-                @change="onAirplaneToggle"
+                @change="onRegistrationAndSmsToggle"
               />
             </div>
           </div>
         </div>
 
 
-        <!-- 允许漫游 -->
+        <!-- 数据漫游 -->
         <div
           class="ui-panel-muted p-3 space-y-1"
           :class="local.roaming_enabled ? 'border border-lime-300 bg-lime-50/50 dark:bg-lime-900/20' : ''"
         >
           <div class="flex items-center justify-between">
             <div>
-              <div class="text-sm font-bold text-gray-800 dark:text-gray-100">允许漫游</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">关闭后模块不会注册漫游网络</div>
+              <div class="text-sm font-bold text-gray-800 dark:text-gray-100">数据漫游</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">仅控制漫游状态下的数据连接，不影响驻网和短信</div>
             </div>
             <div class="flex items-center gap-2">
               <span v-if="roamingFailed" class="text-xs text-orange-500 dark:text-orange-400">{{ roamingError }}</span>

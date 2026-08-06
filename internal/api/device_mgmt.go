@@ -189,10 +189,36 @@ func modemSummaryStatus(status modem.DeviceStatus) modem.DeviceStatus {
 	return status
 }
 
+func suppressUnconfirmedSIMRuntimeStatus(w *device.Worker, status modem.DeviceStatus) modem.DeviceStatus {
+	if w == nil || !w.SIMIdentitySuppressesOverviewIMSI() {
+		return status
+	}
+	status.Operator = ""
+	status.NetworkMode = ""
+	status.NetworkDuplex = ""
+	status.RadioBand = ""
+	status.RadioChannel = 0
+	status.RegStatus = 0
+	status.RegStatusText = ""
+	status.PSAttached = false
+	status.SignalDBM = 0
+	status.SignalRSRP = 0
+	status.SignalRSRQ = 0
+	status.SignalSINR = 0
+	status.NR5GSignalSINR = 0
+	status.LAC = ""
+	status.CellID = ""
+	status.APN = ""
+	status.IMSStatus = 0
+	return status
+}
+
 func registrationStateLabel(regStatus int) string {
 	switch regStatus {
-	case 1, 5:
+	case 1:
 		return "registered"
+	case 5:
+		return "roaming"
 	case 2:
 		return "searching"
 	case 3:
@@ -277,7 +303,7 @@ func (s *Server) handleDeviceMgmtOverview(c *gin.Context) {
 		if v, ok := cfgByID[w.ID]; ok {
 			cfg = overviewDisplayConfig(w.Config, v, true)
 		}
-		status := w.GetCachedDeviceStatus() // 设备管理总览列表读缓存，0 IPC
+		status := suppressUnconfirmedSIMRuntimeStatus(w, w.GetCachedDeviceStatus()) // 设备管理总览列表读缓存，0 IPC
 		controlOnline := w.GetCachedHealthy()
 		item := deviceMgmtOverviewItem{
 			ID:                     w.ID,
@@ -574,6 +600,8 @@ func (s *Server) buildOverviewLiteDetailItemFromWorker(w *device.Worker, cfg con
 }
 
 func (s *Server) buildOverviewLiteItemFromWorkerWithModem(w *device.Worker, cfg config.DeviceConfig, status modem.DeviceStatus, radioLiveOK *bool, modemStatus modem.DeviceStatus) deviceMgmtOverviewLiteItem {
+	status = suppressUnconfirmedSIMRuntimeStatus(w, status)
+	modemStatus = suppressUnconfirmedSIMRuntimeStatus(w, modemStatus)
 	controlOnline := w.GetCachedHealthy()
 	item := deviceMgmtOverviewLiteItem{
 		ID:                     w.ID,
@@ -714,7 +742,7 @@ func (s *Server) handleDeviceMgmtList(c *gin.Context) {
 		if v, ok := cfgByID[w.ID]; ok {
 			cfg = overviewDisplayConfig(w.Config, v, true)
 		}
-		status := w.GetCachedDeviceStatus()
+		status := suppressUnconfirmedSIMRuntimeStatus(w, w.GetCachedDeviceStatus())
 		controlOnline := w.GetCachedHealthy()
 		item := deviceMgmtListItem{
 			ID:                     w.ID,
@@ -2378,8 +2406,8 @@ func (s *Server) handleDeviceMgmtSetFlightMode(c *gin.Context) {
 	flightModeEnabled := req.Enabled
 
 	// 先落库卡策略（飞行模式跟卡走）：开飞行与 network/vowifi 互斥，关飞行仅清 airplane。
-	// best-effort：落库失败不阻断热切（与 network/vowifi 热切路径一致）。
-	s.patchCardPolicyForDevice(id, func(p *db.CardPolicy) {
+	// 未确认当前 SIM 或落库失败时不触发硬件动作，避免 UI 与卡策略状态分裂。
+	patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, id, "SIM 身份未确认，请等待切卡完成后再切换驻网与短信", func(p *db.CardPolicy) {
 		if flightModeEnabled {
 			p.AirplaneEnabled = true
 			p.VoWiFiEnabled = false
@@ -2388,12 +2416,15 @@ func (s *Server) handleDeviceMgmtSetFlightMode(c *gin.Context) {
 			p.AirplaneEnabled = false
 		}
 	})
+	if !ok {
+		return
+	}
 	// 同步 w.Config，使概览即时反映飞行/在线模式（setWorkerFlightMode 只切硬件不碰 Config）。
 	s.pool.SetWorkerAirplanePolicy(id, flightModeEnabled)
 
 	operatingMode, flightMode, err := setWorkerFlightMode(c.Request.Context(), worker, flightModeEnabled)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "切换飞行模式失败: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "切换飞行模式失败: " + err.Error() + rollbackCardPolicyPatchMessage(patch)})
 		return
 	}
 	go func(disabled bool) {
@@ -2577,7 +2608,7 @@ func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 
 		w := s.pool.GetWorker(deviceID)
 		if w != nil {
-			status := w.GetCachedDeviceStatus()
+			status := suppressUnconfirmedSIMRuntimeStatus(w, w.GetCachedDeviceStatus())
 			trueVal := true
 			// 用运行时投影(w.Config)合并展示，使策略字段反映跟卡走的有效值
 			item = s.buildOverviewLiteDetailItemFromWorker(w, overviewDisplayConfig(w.Config, *md, true), status, &trueVal)

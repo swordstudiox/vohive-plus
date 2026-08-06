@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -146,6 +147,108 @@ func TestBuildOverviewLiteItemSuppressesCachedIMSIDuringIdentityTransition(t *te
 	}
 }
 
+func TestBuildOverviewLiteItemSuppressesRuntimeRegistrationDuringIdentityTransition(t *testing.T) {
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "dev-switching-runtime"}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, false)
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Phase"}, "transitioning")
+	server := &Server{pool: p}
+
+	item := server.buildOverviewLiteItemFromWorker(
+		w,
+		config.DeviceConfig{ID: "dev-switching-runtime", Name: "Device Switching"},
+		modem.DeviceStatus{
+			Operator:    "中国联通",
+			NetworkMode: "LTE",
+			RegStatus:   5,
+			SignalDBM:   -57,
+			ICCID:       "",
+			IMSI:        "",
+		},
+		nil,
+	)
+
+	if item.RegistrationStateLabel != "unknown" {
+		t.Fatalf("RegistrationStateLabel=%q want unknown while SIM identity is transitioning", item.RegistrationStateLabel)
+	}
+	if item.RadioRegistered {
+		t.Fatal("RadioRegistered=true, want false while SIM identity is transitioning")
+	}
+	if item.Modem.RegStatus != 0 || item.Modem.SignalDBM != 0 || item.Modem.Operator != "" {
+		t.Fatalf("Modem=%+v want runtime registration/signal suppressed while SIM identity is transitioning", item.Modem)
+	}
+}
+
+func TestStatusDetailSuppressesRuntimeRegistrationDuringIdentityTransition(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "dev-status-switching", Config: config.DeviceConfig{ID: "dev-status-switching", Name: "Status Switching"}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, false)
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Phase"}, "transitioning")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "Ready"}, true)
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "Operator"}, "中国联通")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "NetworkMode"}, "LTE")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "RegStatus"}, 5)
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "RegStatusText"}, "漫游驻网")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "SignalDBM"}, -57)
+	injectWorker(p, w)
+
+	server := &Server{pool: p}
+	r := gin.Default()
+	r.GET("/api/devices/:device_id/status", server.handleStatusDetail)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/devices/dev-status-switching/status", nil)
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !containsAll(body, `"operator":""`, `"reg_status":0`, `"reg_status_text":""`, `"signal_dbm":0`) {
+		t.Fatalf("body=%s want runtime registration/signal suppressed while SIM identity is transitioning", body)
+	}
+}
+
+func TestDashboardDevicesSuppressesRuntimeRegistrationDuringIdentityTransition(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "dev-dashboard-switching", Config: config.DeviceConfig{ID: "dev-dashboard-switching", Name: "Dashboard Switching"}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, false)
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Phase"}, "transitioning")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "Ready"}, true)
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "Operator"}, "中国联通")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "NetworkMode"}, "LTE")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "NetworkDuplex"}, "FDD")
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "SignalDBM"}, -57)
+	injectWorker(p, w)
+
+	server := &Server{pool: p}
+	r := gin.Default()
+	r.GET("/api/dashboard/devices", server.handleListDevices)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/dashboard/devices", nil)
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload) != 1 {
+		t.Fatalf("len=%d body=%s", len(payload), rec.Body.String())
+	}
+	got := payload[0]
+	if got["operator"] != "" || got["network_mode"] != "" || got["network_duplex"] != "" || got["signal_dbm"].(float64) != 0 {
+		t.Fatalf("dashboard item=%+v want runtime registration/signal suppressed while SIM identity is transitioning", got)
+	}
+}
+
 func TestBuildOverviewLiteItemIncludesActiveEsimProfileName(t *testing.T) {
 	mgr := newTestEsimManager()
 	mgrTestSetOverviewCache(t, mgr, &esim.EsimOverview{
@@ -213,7 +316,7 @@ func TestRegistrationStateLabel(t *testing.T) {
 		want string
 	}{
 		{name: "home", reg: 1, want: "registered"},
-		{name: "roaming", reg: 5, want: "registered"},
+		{name: "roaming", reg: 5, want: "roaming"},
 		{name: "searching", reg: 2, want: "searching"},
 		{name: "denied", reg: 3, want: "denied"},
 		{name: "unknown", reg: 0, want: "unknown"},

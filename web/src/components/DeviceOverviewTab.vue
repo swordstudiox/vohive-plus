@@ -140,6 +140,11 @@ const controlOnline = computed(() => isControlOnline(props.device))
 
 const isRegistered = computed(() => isRadioRegistered(props.device))
 
+const registrationModeText = computed(() => {
+  if (!isRegistered.value) return ''
+  return props.device?.registration_state_label === 'roaming' ? '漫游驻网' : '归属地驻网'
+})
+
 const cellularStatusTone = computed<StatusLightTone>(() => {
   if (isRecoveryPhase(props.device?.lifecycle_phase)) return 'warning'
   if (!controlOnline.value) return 'danger'
@@ -262,6 +267,7 @@ const networkPanelMessage = computed(() => {
               <template v-if="isRegistered">
                 {{ device?.modem?.operator || '--' }}
                 <span v-if="device?.modem?.network_mode" class="opacity-70">· {{ [device?.modem?.network_duplex, device?.modem?.network_mode].filter(Boolean).join(' ') }}</span>
+                <span v-if="registrationModeText" class="opacity-70">· {{ registrationModeText }}</span>
               </template>
               <template v-else>
                 {{ cellularStatusText }}

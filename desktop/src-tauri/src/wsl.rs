@@ -52,6 +52,10 @@ pub fn keepalive_args() -> Vec<&'static str> {
     ]
 }
 
+pub fn terminate_args() -> [&'static str; 2] {
+    ["--terminate", DISTRO]
+}
+
 pub fn is_distro_running(list_output: &str) -> bool {
     list_output
         .lines()
@@ -117,6 +121,39 @@ pub fn run_root_shell_timeout(
     run_root_timeout(&["--exec", "/bin/sh", "-lc", script], timeout)
 }
 
+pub fn terminate_distro(timeout: Duration) -> std::io::Result<std::process::Output> {
+    run_output_with_timeout(DEFAULT_WSL, &terminate_args(), timeout)
+}
+
+pub fn vohive_backend_pids(timeout: Duration) -> Result<Vec<u32>, String> {
+    if !should_probe_backend_pids(current_distro_running()?) {
+        return Ok(Vec::new());
+    }
+
+    let output = run_root_shell_timeout(
+        "pgrep -f '^/opt/vohive/bin/vohive( |$)' || true",
+        timeout,
+    )
+    .map_err(|err| err.to_string())?;
+
+    if !output.status.success() {
+        return Err(clean_output(&output.stderr));
+    }
+
+    Ok(parse_pid_lines(&clean_output(&output.stdout)))
+}
+
+fn should_probe_backend_pids(distro_running: bool) -> bool {
+    distro_running
+}
+
+pub fn parse_pid_lines(output: &str) -> Vec<u32> {
+    output
+        .lines()
+        .filter_map(|line| line.trim().parse::<u32>().ok())
+        .collect()
+}
+
 pub fn windows_path_to_wsl(path: &Path) -> String {
     let mut s = path.to_string_lossy().replace('\\', "/");
     if let Some(rest) = s.strip_prefix("//?/") {
@@ -137,7 +174,10 @@ pub fn sh_quote(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_distro_running, keepalive_args, sh_quote, windows_path_to_wsl, DISTRO};
+    use super::{
+        is_distro_running, keepalive_args, parse_pid_lines, sh_quote, should_probe_backend_pids,
+        terminate_args, windows_path_to_wsl, DISTRO,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -172,6 +212,26 @@ mod tests {
         assert!(args.windows(2).any(|pair| pair == ["-d", DISTRO]));
         assert!(args.contains(&"--exec"));
         assert!(args.contains(&"while true; do sleep 3600; done"));
+    }
+
+    #[test]
+    fn terminate_args_stop_the_configured_wsl_distribution() {
+        assert_eq!(terminate_args(), ["--terminate", DISTRO]);
+    }
+
+    #[test]
+    fn parses_pgrep_pid_lines() {
+        assert_eq!(parse_pid_lines("4242\nnot-a-pid\n4343\n"), vec![4242, 4343]);
+    }
+
+    #[test]
+    fn skips_backend_pid_probe_when_distro_is_stopped() {
+        assert!(!should_probe_backend_pids(false));
+    }
+
+    #[test]
+    fn probes_backend_pids_when_distro_is_running() {
+        assert!(should_probe_backend_pids(true));
     }
 
     #[test]

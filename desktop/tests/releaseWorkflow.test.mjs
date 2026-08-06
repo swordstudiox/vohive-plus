@@ -21,3 +21,14 @@ test('release workflow publishes versioned release notes and Linux runtime asset
   assert.match(workflow, /vohive-plus-firmware_\$\{\{\s*needs\.vars\.outputs\.version\s*\}\}_linux_/)
   assert.ok(!workflow.includes('nsis'))
 })
+
+test('release workflow stamps desktop app metadata with release version', () => {
+  assert.match(workflow, /Update desktop app version/)
+  assert.match(workflow, /desktop\\package\.json/)
+  assert.match(workflow, /desktop\\src-tauri\\tauri\.conf\.json/)
+  assert.match(workflow, /desktop\\src-tauri\\Cargo\.toml/)
+  assert.match(workflow, /desktop\\src-tauri\\Cargo\.lock/)
+  assert.match(workflow, /vohive-plus-desktop/)
+  assert.match(workflow, /\$inPackageSection/)
+  assert.match(workflow, /\[package\]/)
+})

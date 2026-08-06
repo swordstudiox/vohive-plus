@@ -61,6 +61,19 @@ type qmiRegistrationController interface {
 	SetOperatingMode(ctx context.Context, mode backend.OperatingMode) error
 }
 
+type qmiRuntimeCachingRegistrationController struct {
+	qmiRegistrationController
+	worker *Worker
+}
+
+func (c qmiRuntimeCachingRegistrationController) GetServingSystem(ctx context.Context) (*backend.ServingSystem, error) {
+	ss, err := c.qmiRegistrationController.GetServingSystem(ctx)
+	if err == nil && c.worker != nil {
+		c.worker.updateRuntimeServingSystem(ss)
+	}
+	return ss, err
+}
+
 type qmiRegistrationOptions struct {
 	PollInterval       time.Duration
 	MaxAttempts        int
@@ -373,6 +386,7 @@ func (w *Worker) ensureQMIRegistration(ctx context.Context, requiredForData bool
 	if !ok {
 		return nil
 	}
+	ctrl = qmiRuntimeCachingRegistrationController{qmiRegistrationController: ctrl, worker: w}
 	if ctx == nil {
 		ctx = context.Background()
 	}

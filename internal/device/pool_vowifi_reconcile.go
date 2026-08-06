@@ -128,10 +128,7 @@ func (p *Pool) currentCardPolicyAllowsVoWiFi(w *Worker, statusICCID, reason stri
 		return false
 	}
 	deviceID := strings.TrimSpace(w.ID)
-	iccid := strings.TrimSpace(w.CurrentICCID())
-	if iccid == "" {
-		iccid = strings.TrimSpace(statusICCID)
-	}
+	iccid := strings.TrimSpace(w.ConfirmedICCID())
 	if iccid == "" {
 		if deviceID != "" {
 			p.clearDesiredVoWiFiRecoverState(deviceID)

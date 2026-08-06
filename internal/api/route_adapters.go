@@ -3,11 +3,9 @@ package api
 import (
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/swordstudiox/vohive-plus/internal/db"
-	"github.com/swordstudiox/vohive-plus/internal/device"
 )
 
 type enabledPatchRequest struct {
@@ -30,29 +28,99 @@ func (s *Server) handleDeviceNetworkPatch(c *gin.Context) {
 	deviceID := deviceIDParam(c)
 
 	if *req.Enabled {
+		if s.pool == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
+			return
+		}
+		worker := s.pool.GetWorker(deviceID)
+		if worker == nil {
+			c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到或未运行"})
+			return
+		}
+		nc := worker.NetworkController()
+		if nc == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备不支持网络控制"})
+			return
+		}
+		if s.pool.IsVoWiFiActive(deviceID) {
+			c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "VoWiFi 运行中，无法启动数据网络"})
+			return
+		}
 		// 落库：network_enabled=true + ip_version + apn（APN/IP 供下次连接生效）
 		ipVersion := strings.TrimSpace(req.IPVersion)
 		apn := strings.TrimSpace(req.APN)
-		iccid, _, _ := s.patchCardPolicyForDevice(deviceID, func(p *db.CardPolicy) {
+		patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, deviceID, "SIM 身份未确认，请等待切卡完成后再开启蜂窝数据", func(p *db.CardPolicy) {
 			p.NetworkEnabled = true
 			if ipVersion != "" {
 				p.IPVersion = ipVersion
 			}
 			p.APN = apn
 		})
+		if !ok {
+			return
+		}
 		// 同步 w.Config，使概览读到最新值（QMI APN 在下次连接时生效）
-		if iccid != "" {
+		if patch.ICCID != "" {
 			s.pool.SetWorkerNetworkPolicy(deviceID, true, ipVersion, apn)
 		}
-		s.handleDeviceMgmtStartNetwork(c)
+		if err := worker.StartNetwork(); err != nil {
+			status := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "data_roaming_disabled") {
+				status = http.StatusConflict
+			}
+			c.JSON(status, gin.H{"status": "error", "message": "启动数据网络失败: " + err.Error() + rollbackCardPolicyPatchMessage(patch)})
+			return
+		}
+		go func() { _ = worker.RefreshRuntime(nil, "start_network") }()
+		c.JSON(http.StatusOK, gin.H{
+			"status":            "ok",
+			"message":           "数据网络已启动",
+			"device":            deviceID,
+			"network_connected": worker.NetworkConnected(),
+			"private_ip":        nc.GetPrivateIP(),
+			"private_ipv6":      nc.GetPrivateIPv6(),
+			"public_ip":         worker.GetCachedIP(),
+			"public_ipv6":       worker.GetCachedIPv6(),
+		})
 		return
 	}
 
+	if s.pool == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
+		return
+	}
+	worker := s.pool.GetWorker(deviceID)
+	if worker == nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到或未运行"})
+		return
+	}
+	nc := worker.NetworkController()
+	if nc == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备不支持网络控制"})
+		return
+	}
 	// enabled=false：落库 network_enabled=false
-	s.patchCardPolicyForDevice(deviceID, func(p *db.CardPolicy) {
+	patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, deviceID, "SIM 身份未确认，请等待切卡完成后再关闭蜂窝数据", func(p *db.CardPolicy) {
 		p.NetworkEnabled = false
 	})
-	s.handleDeviceMgmtStopNetwork(c)
+	if !ok {
+		return
+	}
+	if err := worker.StopNetwork(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "停止数据网络失败: " + err.Error() + rollbackCardPolicyPatchMessage(patch)})
+		return
+	}
+	go func() { _ = worker.RefreshRuntime(nil, "stop_network") }()
+	c.JSON(http.StatusOK, gin.H{
+		"status":            "ok",
+		"message":           "数据网络已停止",
+		"device":            deviceID,
+		"network_connected": worker.NetworkConnected(),
+		"private_ip":        "",
+		"private_ipv6":      "",
+		"public_ip":         "",
+		"public_ipv6":       "",
+	})
 }
 
 func (s *Server) handleDeviceVoWiFiPatch(c *gin.Context) {
@@ -67,18 +135,48 @@ func (s *Server) handleDeviceVoWiFiPatch(c *gin.Context) {
 	if *req.Enabled {
 		// 落库：仅置 vowifi_enabled=true。不碰 airplane_enabled——它是用户的纯飞行
 		// 意图，作为关闭 VoWiFi 后的回退依据；VoWiFi 接管射频由运行时投影派生。
-		s.patchCardPolicyForDevice(deviceID, vowifiEnablePolicyMutation)
+		patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, deviceID, "SIM 身份未确认，请等待切卡完成后再切换 VoWiFi", vowifiEnablePolicyMutation)
+		if !ok {
+			return
+		}
 		// 同步 w.Config，使概览即时切到 VoWiFi 模式面板（EnableVoWiFi 不碰 Config）。
 		s.pool.SetWorkerVoWiFiPolicy(deviceID, true)
-		s.handleVoWiFiEnable(c)
+		if err := s.pool.EnableVoWiFi(deviceID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status":  "error",
+				"message": "VoWiFi 启用失败: " + err.Error() + rollbackCardPolicyPatchMessage(patch),
+				"device":  deviceID,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"message": "VoWiFi 已启用，设备已进入飞行模式",
+			"device":  deviceID,
+		})
 		return
 	}
 
 	// 落库：仅清 vowifi_enabled=false，保留 airplane_enabled（用户飞行意图）。
 	// 关闭 VoWiFi 后 DisableVoWiFi 会按当前卡策略重投影：之前是飞行则回飞行，否则回在线。
-	s.patchCardPolicyForDevice(deviceID, vowifiDisablePolicyMutation)
+	patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, deviceID, "SIM 身份未确认，请等待切卡完成后再切换 VoWiFi", vowifiDisablePolicyMutation)
+	if !ok {
+		return
+	}
 	s.pool.SetWorkerVoWiFiPolicy(deviceID, false)
-	s.handleVoWiFiDisable(c)
+	if err := s.pool.DisableVoWiFi(deviceID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "VoWiFi 禁用失败: " + err.Error() + rollbackCardPolicyPatchMessage(patch),
+			"device":  deviceID,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "ok",
+		"message": "VoWiFi 已禁用",
+		"device":  deviceID,
+	})
 }
 
 // vowifiEnablePolicyMutation 开 VoWiFi 的落库副作用：只置 vowifi，飞行意图保持不变。
@@ -86,14 +184,6 @@ func vowifiEnablePolicyMutation(p *db.CardPolicy) { p.VoWiFiEnabled = true }
 
 // vowifiDisablePolicyMutation 关 VoWiFi 的落库副作用：只清 vowifi，保留用户飞行意图以便回退。
 func vowifiDisablePolicyMutation(p *db.CardPolicy) { p.VoWiFiEnabled = false }
-
-func roamingServiceATCommand(enabled bool) string {
-	return device.RoamingServiceATCommand(enabled)
-}
-
-var executeRoamingATForWorker = func(worker *device.Worker, enabled bool) (string, error) {
-	return device.ExecuteRoamingATForWorker(worker, enabled, 5*time.Second)
-}
 
 func (s *Server) handleDeviceRoamingPatch(c *gin.Context) {
 	var req enabledPatchRequest
@@ -112,46 +202,29 @@ func (s *Server) handleDeviceRoamingPatch(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到或未运行"})
 		return
 	}
-	if s.pool.IsESIMSwitching(deviceID) {
-		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "设备正在切卡，请稍后再切换漫游策略"})
+	if s.pool.IsESIMSwitching(deviceID) || worker.SIMIdentityUnconfirmed() {
+		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "SIM 身份未确认，请稍后再切换数据漫游策略"})
 		return
 	}
 
-	iccid := strings.TrimSpace(worker.CurrentICCID())
-	var previousPolicy *db.CardPolicy
-	if iccid != "" {
-		pol, err := db.ResolveCardPolicy(iccid)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "获取卡策略失败: " + err.Error()})
-			return
-		}
-		previous := pol
-		pol.RoamingEnabled = *req.Enabled
-		pol.Source = "user"
-		if err := db.UpsertCardPolicy(pol); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "保存卡策略失败: " + err.Error()})
-			return
-		}
-		previousPolicy = &previous
-	}
-
-	resp, err := executeRoamingATForWorker(worker, *req.Enabled)
-	if err != nil {
-		message := "切换漫游策略失败: " + err.Error()
-		if previousPolicy != nil {
-			if rollbackErr := db.UpsertCardPolicy(*previousPolicy); rollbackErr != nil {
-				message += "；回滚卡策略失败: " + rollbackErr.Error()
-			}
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": message})
+	patch, ok := s.patchCardPolicyForDeviceTxOrRespond(c, deviceID, "SIM 身份未确认，请稍后再切换数据漫游策略", func(p *db.CardPolicy) {
+		p.RoamingEnabled = *req.Enabled
+	})
+	if !ok {
 		return
 	}
-	if iccid != "" {
+	if patch.ICCID != "" {
 		s.pool.SetWorkerRoamingPolicy(deviceID, *req.Enabled)
+	}
+	if !*req.Enabled {
+		if err := worker.StopNetworkIfDataRoamingDisallowed(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "数据漫游策略已保存，但停止数据网络失败: " + err.Error() + rollbackCardPolicyPatchMessage(patch)})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"status":          "ok",
 		"roaming_enabled": *req.Enabled,
-		"response":        resp,
+		"message":         "数据漫游策略已更新",
 	})
 }

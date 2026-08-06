@@ -434,7 +434,7 @@ func (s *Server) handleListDevices(c *gin.Context) {
 
 	list := make([]DeviceStatus, 0, len(workers))
 	for _, w := range workers {
-		status := w.GetCachedDeviceStatus() // 仓表盘列表读缓存，0 IPC
+		status := suppressUnconfirmedSIMRuntimeStatus(w, w.GetCachedDeviceStatus()) // 仓表盘列表读缓存，0 IPC
 		cfg := w.Config
 		if v, ok := cfgByID[w.ID]; ok {
 			cfg = v
@@ -847,7 +847,11 @@ func (s *Server) handleDeviceMgmtStartNetwork(c *gin.Context) {
 		return
 	}
 	if err := worker.StartNetwork(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "启动数据网络失败: " + err.Error()})
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "data_roaming_disabled") {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"status": "error", "message": "启动数据网络失败: " + err.Error()})
 		return
 	}
 	go func() { _ = worker.RefreshRuntime(nil, "start_network") }()
@@ -1147,7 +1151,7 @@ func (s *Server) handleStatusDetail(c *gin.Context) {
 
 	_ = worker.RefreshRuntime(c.Request.Context(), "status_detail")
 	_ = worker.RefreshIdentityLive(c.Request.Context(), "status_detail")
-	status := worker.ProjectDeviceStatus()
+	status := suppressUnconfirmedSIMRuntimeStatus(worker, worker.ProjectDeviceStatus())
 
 	response := gin.H{
 		"id":                worker.ID,

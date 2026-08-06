@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swordstudiox/vohive-plus/internal/backend"
 	"github.com/swordstudiox/vohive-plus/internal/config"
 	"github.com/swordstudiox/vohive-plus/internal/db"
 	"github.com/swordstudiox/vohive-plus/internal/device"
@@ -37,6 +40,116 @@ func openTestDB(t *testing.T) {
 		}
 	})
 }
+
+type cardPolicyAPIFakeNetworkController struct {
+	connected     bool
+	disconnected  bool
+	connectErr    error
+	disconnectErr error
+}
+
+func (f *cardPolicyAPIFakeNetworkController) Connect() error {
+	if f.connectErr != nil {
+		return f.connectErr
+	}
+	f.connected = true
+	return nil
+}
+func (f *cardPolicyAPIFakeNetworkController) Disconnect() error {
+	if f.disconnectErr != nil {
+		return f.disconnectErr
+	}
+	f.disconnected = true
+	f.connected = false
+	return nil
+}
+func (f *cardPolicyAPIFakeNetworkController) IsConnected() bool { return f.connected }
+func (f *cardPolicyAPIFakeNetworkController) RotateIP() error   { return nil }
+func (f *cardPolicyAPIFakeNetworkController) GetPrivateIP() string {
+	return "10.0.0.2"
+}
+func (f *cardPolicyAPIFakeNetworkController) GetPrivateIPv6() string { return "" }
+func (f *cardPolicyAPIFakeNetworkController) GetPublicIPv4AndV6NoCache() (string, string) {
+	return "", ""
+}
+
+func newUnconfirmedPolicyWorker(t *testing.T, id string) (*device.Pool, *device.Worker, *cardPolicyAPIFakeNetworkController) {
+	t.Helper()
+	p := device.NewPool(&config.Config{})
+	net := &cardPolicyAPIFakeNetworkController{connected: true}
+	w := &device.Worker{ID: id, Config: config.DeviceConfig{ID: id}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986current")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "TargetICCID"}, "8986target")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Phase"}, "transitioning")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, false)
+	setNestedPrivateField(t, w, []string{"netOverride"}, net)
+	injectWorker(p, w)
+	return p, w, net
+}
+
+type cardPolicyAPIFakeBackend struct {
+	setErr error
+	mode   backend.OperatingMode
+}
+
+func (f *cardPolicyAPIFakeBackend) GetIMEI(context.Context) (string, error)     { return "", nil }
+func (f *cardPolicyAPIFakeBackend) GetIMSI(context.Context) (string, error)     { return "", nil }
+func (f *cardPolicyAPIFakeBackend) GetICCID(context.Context) (string, error)    { return "", nil }
+func (f *cardPolicyAPIFakeBackend) GetMSISDN(context.Context) (string, error)   { return "", nil }
+func (f *cardPolicyAPIFakeBackend) GetRevision(context.Context) (string, error) { return "", nil }
+func (f *cardPolicyAPIFakeBackend) GetSignalInfo(context.Context) (*backend.SignalInfo, error) {
+	return &backend.SignalInfo{}, nil
+}
+func (f *cardPolicyAPIFakeBackend) GetServingSystem(context.Context) (*backend.ServingSystem, error) {
+	return &backend.ServingSystem{}, nil
+}
+func (f *cardPolicyAPIFakeBackend) IsSimInserted(context.Context) (bool, error) {
+	return true, nil
+}
+func (f *cardPolicyAPIFakeBackend) GetNativeMCCMNC(context.Context) (string, string, error) {
+	return "", "", nil
+}
+func (f *cardPolicyAPIFakeBackend) GetNativeSPN(context.Context) (string, error) { return "", nil }
+func (f *cardPolicyAPIFakeBackend) GetSIMMetadata(context.Context) (*backend.SIMMetadata, error) {
+	return nil, nil
+}
+func (f *cardPolicyAPIFakeBackend) SendSMS(context.Context, string, string) error { return nil }
+func (f *cardPolicyAPIFakeBackend) ReadSMS(context.Context, int) (*backend.SMS, error) {
+	return nil, nil
+}
+func (f *cardPolicyAPIFakeBackend) DeleteSMS(context.Context, int) error { return nil }
+func (f *cardPolicyAPIFakeBackend) ListSMS(context.Context) ([]backend.SMSSummary, error) {
+	return nil, nil
+}
+func (f *cardPolicyAPIFakeBackend) DeleteAllSMS(context.Context) error { return nil }
+func (f *cardPolicyAPIFakeBackend) SetOperatingMode(_ context.Context, mode backend.OperatingMode) error {
+	if f.setErr != nil {
+		return f.setErr
+	}
+	f.mode = mode
+	return nil
+}
+func (f *cardPolicyAPIFakeBackend) GetOperatingMode(context.Context) (backend.OperatingMode, error) {
+	if f.mode == 0 {
+		return backend.ModeOnline, nil
+	}
+	return f.mode, nil
+}
+func (f *cardPolicyAPIFakeBackend) Reboot(context.Context) error { return nil }
+func (f *cardPolicyAPIFakeBackend) OpenLogicalChannel(context.Context, string) (int, error) {
+	return 0, nil
+}
+func (f *cardPolicyAPIFakeBackend) CloseLogicalChannel(context.Context, int) error {
+	return nil
+}
+func (f *cardPolicyAPIFakeBackend) TransmitAPDU(context.Context, int, string) (string, error) {
+	return "", nil
+}
+func (f *cardPolicyAPIFakeBackend) TransmitBasicAPDU(context.Context, string) (string, error) {
+	return "", nil
+}
+func (f *cardPolicyAPIFakeBackend) Mode() string { return backend.BackendQMI }
+func (f *cardPolicyAPIFakeBackend) Close() error { return nil }
 
 func TestGetCardPolicyEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -202,6 +315,36 @@ func TestPatchCardPolicyForDeviceNoICCID(t *testing.T) {
 	}
 }
 
+func TestPatchCardPolicyForDeviceSkipsUnconfirmedTargetICCID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "wwan-switch-target"}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "TargetICCID"}, "8986target001")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Phase"}, "transitioning")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, false)
+	injectWorker(p, w)
+
+	s := &Server{pool: p}
+	iccid, applied, err := s.patchCardPolicyForDevice("wwan-switch-target", func(pol *db.CardPolicy) {
+		pol.NetworkEnabled = true
+	})
+
+	if err != nil {
+		t.Fatalf("error=%v", err)
+	}
+	if applied {
+		t.Fatalf("applied=true, want false while target ICCID is not confirmed")
+	}
+	if iccid != "" {
+		t.Fatalf("iccid=%q want empty while target ICCID is not confirmed", iccid)
+	}
+	if _, err := db.GetCardPolicy("8986target001"); err == nil {
+		t.Fatalf("target ICCID policy should not be created before SIM identity is confirmed")
+	}
+}
+
 // TestPatchCardPolicyVoWiFiKeepsAirplaneIntent 验证开 VoWiFi 不再强制 airplane=true：
 // airplane 反映用户的纯飞行意图，独立于 vowifi。
 func TestPatchCardPolicyVoWiFiKeepsAirplaneIntent(t *testing.T) {
@@ -324,7 +467,194 @@ func TestPutCardPolicyAirplaneField(t *testing.T) {
 	}
 }
 
-func TestDeviceRoamingPatchWritesPolicyAndUsesExpectedATCommand(t *testing.T) {
+func TestDeviceNetworkDisableRejectsUnconfirmedSIMIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	p, _, net := newUnconfirmedPolicyWorker(t, "wwan-net-unconfirmed")
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/network", s.handleDeviceNetworkPatch)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-net-unconfirmed/network", strings.NewReader(`{"enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if net.disconnected {
+		t.Fatal("network controller should not be called when SIM identity is unconfirmed")
+	}
+}
+
+func TestDeviceNetworkPatchMissingWorkerReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	s := &Server{pool: device.NewPool(&config.Config{})}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/network", s.handleDeviceNetworkPatch)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/missing-worker/network", strings.NewReader(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeviceNetworkEnableRollsBackPolicyWhenHardwareFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	_ = db.UpsertCardPolicy(db.CardPolicy{ICCID: "8986netfail", NetworkEnabled: false, RoamingEnabled: true, IPVersion: "v4", Source: "user"})
+
+	p := device.NewPool(&config.Config{})
+	net := &cardPolicyAPIFakeNetworkController{connectErr: errors.New("connect failed")}
+	w := &device.Worker{ID: "wwan-net-fail", Config: config.DeviceConfig{ID: "wwan-net-fail", NetworkEnabled: false, RoamingEnabled: true}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986netfail")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, true)
+	setNestedPrivateField(t, w, []string{"netOverride"}, net)
+	injectWorker(p, w)
+
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/network", s.handleDeviceNetworkPatch)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-net-fail/network", strings.NewReader(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	pol, err := db.GetCardPolicy("8986netfail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pol.NetworkEnabled {
+		t.Fatalf("hardware failure should roll back network policy: %+v", pol)
+	}
+	if w.Config.NetworkEnabled {
+		t.Fatalf("hardware failure should roll back worker config: %+v", w.Config)
+	}
+}
+
+func TestDeviceVoWiFiPatchRejectsUnconfirmedSIMIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	p, _, _ := newUnconfirmedPolicyWorker(t, "wwan-vowifi-unconfirmed")
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/vowifi", s.handleDeviceVoWiFiPatch)
+
+	for _, body := range []string{`{"enabled":true}`, `{"enabled":false}`} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-vowifi-unconfirmed/vowifi", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("body=%s code=%d response=%s", body, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestDeviceVoWiFiEnableRollsBackPolicyWhenHardwareFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	_ = db.UpsertCardPolicy(db.CardPolicy{ICCID: "8986vowififail", VoWiFiEnabled: false, AirplaneEnabled: false, RoamingEnabled: true, IPVersion: "v4", Source: "user"})
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "wwan-vowifi-fail", Config: config.DeviceConfig{ID: "wwan-vowifi-fail", VoWiFiEnabled: false, AirplaneEnabled: false}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986vowififail")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, true)
+	injectWorker(p, w)
+
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/vowifi", s.handleDeviceVoWiFiPatch)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-vowifi-fail/vowifi", strings.NewReader(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	pol, err := db.GetCardPolicy("8986vowififail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pol.VoWiFiEnabled {
+		t.Fatalf("hardware failure should roll back VoWiFi policy: %+v", pol)
+	}
+	if w.Config.VoWiFiEnabled || w.Config.AirplaneEnabled {
+		t.Fatalf("hardware failure should roll back worker config: %+v", w.Config)
+	}
+}
+
+func TestDeviceFlightModePatchRejectsUnconfirmedSIMIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	p, _, _ := newUnconfirmedPolicyWorker(t, "wwan-flight-unconfirmed")
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/flight-mode", s.handleDeviceMgmtSetFlightMode)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-flight-unconfirmed/flight-mode", strings.NewReader(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeviceFlightModeRollsBackPolicyWhenHardwareFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	_ = db.UpsertCardPolicy(db.CardPolicy{ICCID: "8986flightfail", NetworkEnabled: true, AirplaneEnabled: false, RoamingEnabled: true, IPVersion: "v4", Source: "user"})
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{
+		ID:      "wwan-flight-fail",
+		Config:  config.DeviceConfig{ID: "wwan-flight-fail", NetworkEnabled: true, AirplaneEnabled: false},
+		Backend: &cardPolicyAPIFakeBackend{setErr: errors.New("rf mode failed")},
+	}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986flightfail")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, true)
+	injectWorker(p, w)
+
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/flight-mode", s.handleDeviceMgmtSetFlightMode)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-flight-fail/flight-mode", strings.NewReader(`{"enabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	pol, err := db.GetCardPolicy("8986flightfail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pol.AirplaneEnabled || !pol.NetworkEnabled {
+		t.Fatalf("hardware failure should roll back flight policy: %+v", pol)
+	}
+	if w.Config.AirplaneEnabled || !w.Config.NetworkEnabled {
+		t.Fatalf("hardware failure should roll back worker config: %+v", w.Config)
+	}
+}
+
+func TestDeviceRoamingPatchWritesDataRoamingPolicyWithoutSendingAT(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	openTestDB(t)
 
@@ -332,14 +662,6 @@ func TestDeviceRoamingPatchWritesPolicyAndUsesExpectedATCommand(t *testing.T) {
 	w := &device.Worker{ID: "wwan-roam", Config: config.DeviceConfig{ID: "wwan-roam", ATPort: "/dev/ttyUSB2"}}
 	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986roam001")
 	injectWorker(p, w)
-
-	var gotCmd string
-	oldExec := executeRoamingATForWorker
-	executeRoamingATForWorker = func(worker *device.Worker, enabled bool) (string, error) {
-		gotCmd = roamingServiceATCommand(enabled)
-		return "OK", nil
-	}
-	t.Cleanup(func() { executeRoamingATForWorker = oldExec })
 
 	s := &Server{pool: p}
 	r := gin.Default()
@@ -354,15 +676,53 @@ func TestDeviceRoamingPatchWritesPolicyAndUsesExpectedATCommand(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if gotCmd != `AT+QCFG="roamservice",1,1` {
-		t.Fatalf("cmd=%q", gotCmd)
-	}
 	pol, err := db.GetCardPolicy("8986roam001")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pol.RoamingEnabled {
 		t.Fatalf("roaming_enabled 应落库为 false: %+v", pol)
+	}
+	if !strings.Contains(rec.Body.String(), `"roaming_enabled":false`) {
+		t.Fatalf("body=%s want roaming_enabled=false", rec.Body.String())
+	}
+}
+
+func TestDeviceRoamingDisableRollsBackPolicyWhenStopNetworkFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	openTestDB(t)
+	_ = db.UpsertCardPolicy(db.CardPolicy{ICCID: "8986roamfail", RoamingEnabled: true, NetworkEnabled: true, IPVersion: "v4", Source: "user"})
+
+	p := device.NewPool(&config.Config{})
+	net := &cardPolicyAPIFakeNetworkController{connected: true, disconnectErr: errors.New("disconnect failed")}
+	w := &device.Worker{ID: "wwan-roam-fail", Config: config.DeviceConfig{ID: "wwan-roam-fail", RoamingEnabled: true, NetworkEnabled: true}}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986roamfail")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, true)
+	setNestedPrivateField(t, w, []string{"state", "Runtime", "RegStatus"}, 5)
+	setNestedPrivateField(t, w, []string{"netOverride"}, net)
+	injectWorker(p, w)
+
+	s := &Server{pool: p}
+	r := gin.Default()
+	r.PATCH("/api/devices/:device_id/roaming", s.handleDeviceRoamingPatch)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/devices/wwan-roam-fail/roaming", strings.NewReader(`{"enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	pol, err := db.GetCardPolicy("8986roamfail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pol.RoamingEnabled {
+		t.Fatalf("stop network failure should roll back data roaming policy: %+v", pol)
+	}
+	if !w.Config.RoamingEnabled {
+		t.Fatalf("stop network failure should roll back worker config: %+v", w.Config)
 	}
 }
 
@@ -377,14 +737,6 @@ func TestDeviceRoamingPatchDoesNotSendATWhenPolicySaveFails(t *testing.T) {
 	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986roamdbfail")
 	injectWorker(p, w)
 
-	atCalled := false
-	oldExec := executeRoamingATForWorker
-	executeRoamingATForWorker = func(worker *device.Worker, enabled bool) (string, error) {
-		atCalled = true
-		return "OK", nil
-	}
-	t.Cleanup(func() { executeRoamingATForWorker = oldExec })
-
 	s := &Server{pool: p}
 	r := gin.Default()
 	r.PATCH("/api/devices/:device_id/roaming", s.handleDeviceRoamingPatch)
@@ -397,8 +749,5 @@ func TestDeviceRoamingPatchDoesNotSendATWhenPolicySaveFails(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
-	}
-	if atCalled {
-		t.Fatalf("策略保存失败时不应先向硬件发送漫游 AT")
 	}
 }

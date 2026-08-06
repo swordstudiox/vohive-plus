@@ -271,10 +271,12 @@
 
 ## 阶段 2B：漫游开关正式功能
 
+> 2026-08-05 更正：本阶段最初把 `roaming_enabled` 解释为“允许模块注册漫游网络”，并自动下发 `AT+QCFG="roamservice"`。该语义已在阶段 6E 废弃；当前正式语义为“数据漫游”：只控制漫游注册状态下的数据连接/代理出站，不阻止模块驻网和收短信。
+
 ### 目标
 
 - [x] 将“漫游开关”从 AT 模板提升为正式卡策略能力。
-- [x] Web UI 使用“允许漫游”开关，默认开启；关闭时尝试禁止模块注册漫游网络。
+- [x] Web UI 曾使用“允许漫游”开关；阶段 6E 已更正为“数据漫游”开关。
 - [x] 策略跟随 ICCID，而不是跟随设备硬件路径。
 - [x] 在线当前卡切换时即时发送 AT 指令；离线卡或非当前 eSIM 卡切换时只保存策略，待卡激活/上线后投影生效。
 
@@ -288,11 +290,9 @@
   - `PUT /api/cards/:iccid/policy` 接受 `roaming_enabled`。
   - `PATCH /api/devices/:device_id/roaming` 接受 `{ "enabled": true|false }`。
 - [x] 设备动作端点语义：
-  - `enabled=true`：发送 `AT+QCFG="roamservice",255,1`，恢复自动/允许漫游。
-  - `enabled=false`：发送 `AT+QCFG="roamservice",1,1`，关闭漫游。
-  - QMI/MBIM 后端使用临时 AT 会话，不依赖常驻 AT manager。
-  - AT 后端优先使用已有 AT manager。
-- [x] 前端策略面板新增“允许漫游”开关。
+  - 阶段 2B 旧实现曾下发 `AT+QCFG="roamservice"`；阶段 6E 已更正为只保存数据漫游策略。
+  - `AT+QCFG="roamservice"` 仅保留在高级 AT 模板/手动命令，不再由普通卡策略自动发送。
+- [x] 前端策略面板新增“数据漫游”开关。
   - 主设备卡策略面板支持 live 切换。
   - eSIM 卡内联策略面板支持当前卡 live、非当前卡 stored。
   - 漫游开关不参与网络/VoWiFi/飞行互斥。
@@ -302,7 +302,7 @@
 
 - [x] DB 测试确认迁移列存在、默认策略 `roaming_enabled=true`。
 - [x] API 测试确认 `PUT /cards/:iccid/policy` 可写入漫游策略，未传字段不会误覆盖。
-- [x] API 测试确认 `PATCH /devices/:id/roaming` 会落库并选择正确 AT 指令。
+- [x] API 测试已在阶段 6E 更正：`PATCH /devices/:id/roaming` 只落库数据漫游策略，不发送 `roamservice` AT。
 - [x] 前端测试确认服务层暴露 `setRoaming`，卡策略 composable 支持独立漫游开关。
 - [x] `go test ./internal/db ./internal/api ./internal/device -count=1` 通过。
 - [x] `tsx --test tests/*.test.ts`、`vue-tsc --noEmit`、`npm run build --prefix web` 通过。
@@ -714,3 +714,73 @@
 
 - 2026-08-04 阶段 6D 版本准备：按语义化规则选择 patch 版本 `1.0.1`；已新增 `.github/release-notes/v1.0.1.md`，更新 README 当前产物名、开发构建示例、发布示例和 `binary-release.yml` 手工触发默认版本。验证：`node --test tests/*.test.mjs` 8 项通过，`desktop` 下 `node --test tests/*.test.mjs` 8 项通过，`git diff --check` 无 whitespace 错误，仅有 Windows 换行提示。
 - 2026-08-04 阶段 6D 发布完成：提交 `0894f5701e1e21cc577b6cecc7464fb21609eabf` 已推送到 `origin/main`；注释 tag `v1.0.1` 已推送，tag object 为 `004a9fb541f8d1651dd10e75a98d719ac8a6d1f0`，指向提交 `0894f5701e1e21cc577b6cecc7464fb21609eabf`。GitHub Actions run `30906757503` 已完成且结论为 `success`，Release `VoHive Plus 1.0.1` 已发布到 `https://github.com/swordstudiox/vohive-plus/releases/tag/v1.0.1`。Release 资产包含 Windows x64 桌面便携 zip、Linux amd64/arm64/armv7 后端运行时及对应 sha256 文件。
+
+## 阶段 6E：卡策略驻网/数据/漫游语义澄清
+
+### 根因调查
+
+- [x] 用户实机现象：UI 关闭“允许漫游”后，模块仍可注册网络。
+- [x] 当前“允许漫游”实现只下发 `AT+QCFG="roamservice",255,1` 或 `AT+QCFG="roamservice",1,1`，没有验证注册状态，也没有作为数据面漫游守卫。
+- [x] 当前“开启网络”实际是启动/停止数据网络连接；关闭后仍会保持 QMI/MBIM registration reconcile，模块仍可驻网，SMS 恒开。
+- [x] 当前“飞行模式”才是关闭射频/断开驻网的开关，但它是反向语义，不能等同于“允许模块注册网络、收短信”的正向功能。
+- [x] 当前概览把 `RegStatus=5` 漫游注册归类为 `registered`，没有在 UI 上清晰区分归属地注册和漫游注册。
+
+### 已确认方案
+
+- [x] 将“开启网络”重命名为“蜂窝数据”，描述为“控制数据连接/代理出站，不影响驻网和短信”。
+- [x] 将原 `roaming_enabled` 策略重定义为“数据漫游”：当设备处于 `RegStatus=5` 漫游注册时，关闭后应阻止启动数据网络/代理连接，但不阻止驻网和 SMS。
+- [x] 不再把普通卡策略里的“漫游”解释为“禁止模块注册漫游网络”；`AT+QCFG="roamservice"` 仅作为高级 AT 模板/手动指令保留。
+- [x] 新增正向“驻网与短信”开关，UI 语义上复用并反转现有 `airplane_enabled`，避免新增数据库字段。
+- [x] 让概览/API/UI 明确展示 home/roaming/searching/denied，而不是把 home 和 roaming 都压成 `registered`。
+- [x] 切卡后 SIM 身份未就绪时，概览不能继续用旧运行态展示“有信号/已注册漫游”，需要降级显示，避免误导用户以为切卡成功。
+
+### 实施步骤
+
+- [x] RED：注册状态 `RegStatus=5` 应投影为 `roaming`。
+- [x] RED：卡策略漫游开关只保存“数据漫游”策略，不再发送 `AT+QCFG="roamservice"`。
+- [x] RED：漫游注册且数据漫游关闭时，不应启动蜂窝数据。
+- [x] RED：切卡身份未就绪时，概览不展示旧信号和旧漫游注册态。
+- [x] RED：前端卡策略显示“驻网与短信 / 蜂窝数据 / 数据漫游”，删除“关闭后模块不会注册漫游网络”等错误文案。
+- [x] GREEN：实现后端策略行为和 API 投影。
+- [x] GREEN：实现前端显示和类型更新。
+- [x] 验证 Go、Web 单测、类型检查和构建。
+- [x] 记录评审和教训。
+- [ ] 提交、推送并发布 `v1.0.2`。
+
+## 阶段 6F：桌面壳 WSL 进程识别与版本展示
+
+### 根因调查
+
+- [x] 用户截图显示：WSL 已启动、USB 已 Attached、健康检查正常，但桌面壳“后端进程”显示未运行。
+- [x] 当前桌面壳 `backend_status()` 只看本桌面进程持有的 `state.backend` 子进程句柄；从 GitHub 下载版启动时，如果 WSL 内已有 `/opt/vohive/bin/vohive` 后端，桌面壳没有句柄，因此误报“未运行”。
+- [x] 当前运行环境区域只有“启动 WSL”，缺少显式“停止 WSL”入口。
+- [x] 桌面壳标题和 Web 后端管理界面标题缺少版本号；同版本本地编译版、GitHub 下载版和运行中的 WSL 后端难以区分。
+
+### 实施步骤
+
+- [x] RED：桌面 UI 必须同时提供“启动 WSL”和“停止 WSL”动作。
+- [x] RED：桌面 runtime service 必须暴露 `stop_wsl` 调用。
+- [x] RED：桌面标题显示 `VoHive Plus v<桌面版本>`。
+- [x] RED：后端状态在健康检查正常或 WSL 内存在 `/opt/vohive/bin/vohive` 进程时，应显示为运行中。
+- [x] RED：Web 管理壳品牌显示 `VoHive v<后端版本>`。
+- [x] GREEN：实现 WSL 停止命令、WSL 内后端进程探测和版本展示。
+- [x] 验证桌面 Node 测试、Rust 测试、Web 测试/类型检查/构建。
+- [x] 记录评审和教训。
+- [ ] 提交、推送并发布 `v1.0.2`。
+
+### 版本发布准备
+
+- [x] 本次是用户可见 bugfix 和语义修正，按语义化版本规则从 `1.0.1` 递增到 `1.0.2`。
+- [x] 桌面本地元数据、Tauri 配置、Release workflow 默认版本和 README 当前产物名已同步为 `1.0.2`。
+- [x] 新增 `.github/release-notes/v1.0.2.md`，说明相对 `v1.0.1` 的更新。
+
+### 评审记录
+
+- 2026-08-06 阶段 6E/6F 验证：`node --test tests/*.test.mjs` 8 项通过；`desktop` 下 `node --test tests/*.test.mjs` 12 项通过；`cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 21 项通过；WSL2 `go test ./internal/api ./internal/device ./internal/db -count=1` 通过；WSL2 `npm run test --prefix web` 22 项通过；WSL2 `npm run typecheck --prefix web` 通过；WSL2 `npm run build --prefix web` 通过；`desktop` 下 `pnpm run build` 通过；`desktop` 下 `pnpm tauri build --debug` 通过。
+- 2026-08-06 产物重编译：已同步最新 `web/dist` 到 `internal/web/dist`；已用 `global.Version=1.0.2` 重新编译 Linux amd64 后端 `dist/vohive-open_linux_amd64`；已同步到桌面壳资源并重新生成 debug 桌面程序 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。
+- 2026-08-06 检查结果：`git diff --check` 无 whitespace error，仅有 Windows 换行提示；首次 Rust 在线测试被 crates.io/TLS 环境阻断，改用既有 Cargo 缓存 `--offline` 完成验证；一次并行 Web 类型检查残留进程已清理后单独重跑通过。
+- 2026-08-06 本地审查补救：发现 `停止 WSL` 后状态刷新会通过 WSL 内 `pgrep` 探测后端，从而可能重新启动刚停止的 WSL；已改为只有发行版处于 Running 时才执行后端 PID 探测，并新增单测覆盖 stopped/running 两种分支。
+- 2026-08-06 审查补救追加：`/api/dashboard/devices` 也已接入切卡身份未确认时的运行态压制，避免 dashboard 继续显示旧卡信号、运营商和漫游状态；live 网络、VoWiFi、飞行模式和数据漫游开关在硬件动作失败时已回滚策略与 worker 展示态，避免 UI 和真实硬件状态分裂；Release workflow 的 `Cargo.toml` 版本戳改为仅替换 `[package]` 段，避免误改其它段的 `version` 字段。补充验证：`node --test desktop\tests\releaseWorkflow.test.mjs` 通过；WSL2 `go test ./internal/api -run "DeviceNetworkEnableRollsBack|DeviceVoWiFiEnableRollsBack|DeviceFlightModeRollsBack|DeviceRoamingDisableRollsBack|DashboardDevicesSuppresses|StatusDetailSuppresses|OpenAPIRoaming" -count=1` 通过。
+- 2026-08-06 提交前审查补救：数据漫游关闭后，如果运行态刷新发现设备从归属地注册进入 `RegStatus=5` 漫游驻网，会自动执行既有数据网络断开守卫；桌面壳 `准备 WSL USB` 和 `停止后端` 在 WSL stopped 时不再调用 `wsl -d ... --exec` 反向启动发行版；桌面健康检查改为严格解析 HTTP 状态码和 VoHive `/ping` body；OpenAPI `DeviceConfigDTO` 已移除错放的 `roaming_enabled`。RED/GREEN 验证：新增测试先失败，修复后 `cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 26 项通过；WSL2 `go test ./internal/device -run TestWorkerRuntimeServingSystemStopsConnectedDataWhenRoamingDisallowed -count=1` 通过；WSL2 `go test ./internal/api -run TestOpenAPIDeviceConfigDTODoesNotExposeRoamingPolicy -count=1` 通过。
+- 2026-08-06 发布前本地产物确认：已重新执行 Web build 并同步 embed dist；Linux amd64 后端已用 `global.Version=1.0.2` 重编译，二进制大小约 49.55 MB，已确认包含 `1.0.2` 版本字符串；桌面 debug 构建生成 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。注意后端二进制当前没有 `--version` 参数，版本验证不能使用该参数。
+- 2026-08-06 最终提交前验证：`node --test tests/*.test.mjs` 8 项通过；`desktop` 下 `node --test tests/*.test.mjs` 12 项通过；`cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 26 项通过；WSL2 `go test ./internal/api ./internal/device ./internal/db -count=1` 通过；WSL2 `npm run test --prefix web` 22 项通过；WSL2 `npm run typecheck --prefix web` 通过；WSL2 `npm run build --prefix web` 通过；`desktop` 下 `pnpm run build` 通过；`desktop` 下 `pnpm tauri build --debug` 通过；`git diff --check` 无 whitespace error，仅有 Windows CRLF 提示。

@@ -77,7 +77,7 @@ export type DeviceOverviewItem = {
   lifecycle_phase?: DeviceLifecyclePhase
   lifecycle_reason?: string
   network_connected: boolean
-  registration_state_label?: 'registered' | 'searching' | 'denied' | 'unknown'
+  registration_state_label?: 'registered' | 'roaming' | 'searching' | 'denied' | 'unknown'
   private_ip?: string
   private_ipv6?: string
   public_ip: string
@@ -115,7 +115,7 @@ export type DeviceMgmtListItem = {
   lifecycle_phase?: DeviceLifecyclePhase
   lifecycle_reason?: string
   network_connected: boolean
-  registration_state_label?: 'registered' | 'searching' | 'denied' | 'unknown'
+  registration_state_label?: 'registered' | 'roaming' | 'searching' | 'denied' | 'unknown'
   public_ip: string
   public_ipv6?: string
   interface?: string

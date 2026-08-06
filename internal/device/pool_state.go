@@ -240,6 +240,17 @@ func (w *Worker) SIMIdentitySuppressesOverviewIMSI() bool {
 		w.state.Identity.Phase == simIdentityPhaseDegraded
 }
 
+func (w *Worker) SIMIdentityUnconfirmed() bool {
+	if w == nil {
+		return true
+	}
+	w.cacheMu.RLock()
+	defer w.cacheMu.RUnlock()
+	return w.state.Identity.Phase == simIdentityPhaseTransitioning ||
+		w.state.Identity.Phase == simIdentityPhaseDegraded ||
+		strings.TrimSpace(w.state.Identity.ICCID) == ""
+}
+
 func (w *Worker) SIMIdentityConvergenceMatches(targetICCID string, generation uint64) bool {
 	if w == nil {
 		return false
@@ -394,6 +405,21 @@ func (w *Worker) mergeRuntimeStateLocked(status modem.DeviceStatus, healthy bool
 	return true
 }
 
+func (w *Worker) updateRuntimeServingSystem(ss *backend.ServingSystem) {
+	if w == nil || ss == nil {
+		return
+	}
+	w.cacheMu.Lock()
+	w.state.Runtime.RegStatus = ss.RegStatus
+	w.state.Runtime.RegStatusText = ss.RegStatusText
+	w.state.Runtime.PSAttached = ss.PSAttached
+	now := time.Now()
+	w.state.Meta.RuntimeUpdatedAt = now
+	w.state.Meta.UpdatedAt = now
+	w.cacheMu.Unlock()
+	w.enforceDataRoamingPolicyAfterRuntimeUpdate("serving_system")
+}
+
 // CurrentICCID 取当前有效的 ICCID，兼容切换态
 func (w *Worker) CurrentICCID() string {
 	if w == nil {
@@ -405,4 +431,17 @@ func (w *Worker) CurrentICCID() string {
 		return w.state.Identity.TargetICCID
 	}
 	return w.state.Identity.ICCID
+}
+
+func (w *Worker) ConfirmedICCID() string {
+	if w == nil {
+		return ""
+	}
+	w.cacheMu.RLock()
+	defer w.cacheMu.RUnlock()
+	if w.state.Identity.Phase == simIdentityPhaseTransitioning ||
+		w.state.Identity.Phase == simIdentityPhaseDegraded {
+		return ""
+	}
+	return strings.TrimSpace(w.state.Identity.ICCID)
 }

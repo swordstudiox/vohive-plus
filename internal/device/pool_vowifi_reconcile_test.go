@@ -76,6 +76,17 @@ func waitUntilDesiredVoWiFiTest(t *testing.T, timeout time.Duration, ok func() b
 	t.Fatal("condition was not met before timeout")
 }
 
+type desiredVoWiFiMapPolicyResolver struct {
+	policies map[string]cardpolicy.Policy
+}
+
+func (r desiredVoWiFiMapPolicyResolver) Resolve(iccid string) (cardpolicy.Policy, error) {
+	if pol, ok := r.policies[iccid]; ok {
+		return pol, nil
+	}
+	return cardpolicy.Policy{ICCID: iccid}, nil
+}
+
 func TestDesiredVoWiFiInactiveSchedulesRecover(t *testing.T) {
 	p := newDesiredVoWiFiTestPool(t, "dev-1", true, "001010000000001")
 	commands := make(chan vowifihost.LifecycleCommand, 1)
@@ -294,6 +305,30 @@ func TestDesiredVoWiFiDoesNotRecoverWhenCurrentCardPolicyDisabled(t *testing.T) 
 	w := p.GetWorker("dev-1")
 	w.cacheMu.Lock()
 	w.state.Identity.ICCID = "iccid-new"
+	w.cacheMu.Unlock()
+	commands := make(chan vowifihost.LifecycleCommand, 1)
+	p.voWiFiHost().LifecycleControllerForTest().TestRun = func(ctx context.Context, cmd vowifihost.LifecycleCommand) error {
+		commands <- cmd
+		return nil
+	}
+
+	p.reconcileDesiredVoWiFiOnce(time.Now())
+
+	assertNoRecoverCommand(t, commands)
+}
+
+func TestDesiredVoWiFiDoesNotRecoverWithUnconfirmedTargetICCID(t *testing.T) {
+	p := newDesiredVoWiFiTestPool(t, "dev-1", true, "001010000000001")
+	defer p.cancel()
+	p.SetPolicyResolver(desiredVoWiFiMapPolicyResolver{policies: map[string]cardpolicy.Policy{
+		"iccid-current": {ICCID: "iccid-current", VoWiFiEnabled: false},
+		"iccid-target":  {ICCID: "iccid-target", VoWiFiEnabled: true},
+	}})
+	w := p.GetWorker("dev-1")
+	w.cacheMu.Lock()
+	w.state.Identity.ICCID = "iccid-current"
+	w.state.Identity.TargetICCID = "iccid-target"
+	w.state.Identity.Phase = simIdentityPhaseDegraded
 	w.cacheMu.Unlock()
 	commands := make(chan vowifihost.LifecycleCommand, 1)
 	p.voWiFiHost().LifecycleControllerForTest().TestRun = func(ctx context.Context, cmd vowifihost.LifecycleCommand) error {

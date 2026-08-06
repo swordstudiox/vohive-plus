@@ -31,6 +31,19 @@ type mbimRegistrationController interface {
 	IsSimInserted(ctx context.Context) (bool, error)
 }
 
+type mbimRuntimeCachingRegistrationController struct {
+	mbimRegistrationController
+	worker *Worker
+}
+
+func (c mbimRuntimeCachingRegistrationController) GetServingSystem(ctx context.Context) (*backend.ServingSystem, error) {
+	ss, err := c.mbimRegistrationController.GetServingSystem(ctx)
+	if err == nil && c.worker != nil {
+		c.worker.updateRuntimeServingSystem(ss)
+	}
+	return ss, err
+}
+
 type mbimRegistrationOptions struct {
 	PollInterval            time.Duration
 	MaxAttempts             int
@@ -220,6 +233,7 @@ func (w *Worker) ensureMBIMRegistration(ctx context.Context, requiredForData boo
 	if !ok {
 		return nil
 	}
+	ctrl = mbimRuntimeCachingRegistrationController{mbimRegistrationController: ctrl, worker: w}
 	if ctx == nil {
 		ctx = context.Background()
 	}
