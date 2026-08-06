@@ -745,7 +745,7 @@
 - [x] GREEN：实现前端显示和类型更新。
 - [x] 验证 Go、Web 单测、类型检查和构建。
 - [x] 记录评审和教训。
-- [ ] 提交、推送并发布 `v1.0.2`。
+- [x] 提交、推送并发布 `v1.0.2`。
 
 ## 阶段 6F：桌面壳 WSL 进程识别与版本展示
 
@@ -766,7 +766,7 @@
 - [x] GREEN：实现 WSL 停止命令、WSL 内后端进程探测和版本展示。
 - [x] 验证桌面 Node 测试、Rust 测试、Web 测试/类型检查/构建。
 - [x] 记录评审和教训。
-- [ ] 提交、推送并发布 `v1.0.2`。
+- [x] 提交、推送并发布 `v1.0.2`。
 
 ### 版本发布准备
 
@@ -784,3 +784,4 @@
 - 2026-08-06 提交前审查补救：数据漫游关闭后，如果运行态刷新发现设备从归属地注册进入 `RegStatus=5` 漫游驻网，会自动执行既有数据网络断开守卫；桌面壳 `准备 WSL USB` 和 `停止后端` 在 WSL stopped 时不再调用 `wsl -d ... --exec` 反向启动发行版；桌面健康检查改为严格解析 HTTP 状态码和 VoHive `/ping` body；OpenAPI `DeviceConfigDTO` 已移除错放的 `roaming_enabled`。RED/GREEN 验证：新增测试先失败，修复后 `cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 26 项通过；WSL2 `go test ./internal/device -run TestWorkerRuntimeServingSystemStopsConnectedDataWhenRoamingDisallowed -count=1` 通过；WSL2 `go test ./internal/api -run TestOpenAPIDeviceConfigDTODoesNotExposeRoamingPolicy -count=1` 通过。
 - 2026-08-06 发布前本地产物确认：已重新执行 Web build 并同步 embed dist；Linux amd64 后端已用 `global.Version=1.0.2` 重编译，二进制大小约 49.55 MB，已确认包含 `1.0.2` 版本字符串；桌面 debug 构建生成 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。注意后端二进制当前没有 `--version` 参数，版本验证不能使用该参数。
 - 2026-08-06 最终提交前验证：`node --test tests/*.test.mjs` 8 项通过；`desktop` 下 `node --test tests/*.test.mjs` 12 项通过；`cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 26 项通过；WSL2 `go test ./internal/api ./internal/device ./internal/db -count=1` 通过；WSL2 `npm run test --prefix web` 22 项通过；WSL2 `npm run typecheck --prefix web` 通过；WSL2 `npm run build --prefix web` 通过；`desktop` 下 `pnpm run build` 通过；`desktop` 下 `pnpm tauri build --debug` 通过；`git diff --check` 无 whitespace error，仅有 Windows CRLF 提示。
+- 2026-08-06 阶段 6E/6F 发布完成：发布提交 `7b34068812221369836001b584e47543ab6058f4` 已推送到 `origin/main`；注释 tag `v1.0.2` 已推送，tag object 为 `cbe0b79263223dfe55c7e911749575e65be7edeb`，指向提交 `7b34068812221369836001b584e47543ab6058f4`。GitHub Actions run `31068541380` 已完成且结论为 `success`，Release `VoHive Plus 1.0.2` 已发布到 `https://github.com/swordstudiox/vohive-plus/releases/tag/v1.0.2`。Release 资产共 8 个：Windows x64 桌面便携 zip、Linux amd64/arm64/armv7 后端运行时，以及对应 sha256 文件。
