@@ -201,6 +201,45 @@ func TestUpdateSIMCardVoWiFiPhoneNumberByIMSIPrefersVoWiFiOverModem(t *testing.T
 	}
 }
 
+func TestManualPhoneNumberHasHighestPriority(t *testing.T) {
+	initPhoneNumberTestDB(t)
+
+	if err := UpdateSIMCardModemPhoneNumberByIMSI("imsi-manual-1", "+8613700137000"); err != nil {
+		t.Fatalf("UpdateSIMCardModemPhoneNumberByIMSI() error=%v", err)
+	}
+	if err := UpdateSIMCardVoWiFiPhoneNumberByIMSI("imsi-manual-1", "+8613600136000"); err != nil {
+		t.Fatalf("UpdateSIMCardVoWiFiPhoneNumberByIMSI() error=%v", err)
+	}
+	if err := SetSIMCardManualPhoneNumberByIMSI("imsi-manual-1", "+8613500135000"); err != nil {
+		t.Fatalf("SetSIMCardManualPhoneNumberByIMSI() error=%v", err)
+	}
+	if err := UpdateSIMCardVoWiFiPhoneNumberByIMSI("imsi-manual-1", "+8613400134000"); err != nil {
+		t.Fatalf("UpdateSIMCardVoWiFiPhoneNumberByIMSI(second) error=%v", err)
+	}
+	if err := UpdateSIMCardModemPhoneNumberByIMSI("imsi-manual-1", "+8613300133000"); err != nil {
+		t.Fatalf("UpdateSIMCardModemPhoneNumberByIMSI(second) error=%v", err)
+	}
+
+	sub := loadSIMSubscriptionByIMSI(t, "imsi-manual-1")
+	if sub.ManualPhoneNumber != "+8613500135000" {
+		t.Fatalf("ManualPhoneNumber=%q want=+8613500135000", sub.ManualPhoneNumber)
+	}
+	if sub.PhoneNumber != "+8613500135000" {
+		t.Fatalf("PhoneNumber=%q want manual value", sub.PhoneNumber)
+	}
+
+	if err := SetSIMCardManualPhoneNumberByIMSI("imsi-manual-1", ""); err != nil {
+		t.Fatalf("SetSIMCardManualPhoneNumberByIMSI(clear) error=%v", err)
+	}
+	sub = loadSIMSubscriptionByIMSI(t, "imsi-manual-1")
+	if sub.ManualPhoneNumber != "" {
+		t.Fatalf("ManualPhoneNumber=%q want empty after clear", sub.ManualPhoneNumber)
+	}
+	if sub.PhoneNumber != "+8613400134000" {
+		t.Fatalf("PhoneNumber=%q want latest VoWiFi value after clearing manual", sub.PhoneNumber)
+	}
+}
+
 func TestInvalidPhoneNumbersDoNotOverwriteExistingValue(t *testing.T) {
 	initPhoneNumberTestDB(t)
 

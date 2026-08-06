@@ -76,18 +76,29 @@ test('README documents desktop runtime prerequisites and manual system dependenc
   assert.match(readme, /无需安装 Go、Node、Rust、pnpm、Docker 或 VirtualBox/)
 })
 
-test('repository documents the current 1.0.2 release', () => {
+test('repository documents the current 1.0.3 release', () => {
   const readme = readRepoFile('README.md')
-  const releaseNotes = readRepoFile('.github/release-notes/v1.0.2.md')
+  const releaseNotes = readRepoFile('.github/release-notes/v1.0.3.md')
   const releaseWorkflow = readRepoFile('.github/workflows/binary-release.yml')
 
-  assert.match(readme, /vohive-plus-desktop_1\.0\.2_windows_x64\.zip/)
-  assert.match(readme, /vohive-plus-firmware_1\.0\.2_linux_amd64/)
-  assert.match(readme, /\.github\/release-notes\/v1\.0\.2\.md/)
-  assert.match(releaseNotes, /^# VoHive Plus 1\.0\.2/m)
-  assert.match(releaseNotes, /相对 `v1\.0\.1`/)
-  assert.match(releaseNotes, /停止 WSL/)
-  assert.match(releaseNotes, /数据漫游/)
-  assert.match(releaseWorkflow, /default: '1\.0\.2'/)
-  assert.match(releaseWorkflow, /github\.event\.inputs\.version \|\| '1\.0\.2'/)
+  assert.match(readme, /vohive-plus-desktop_1\.0\.3_windows_x64\.zip/)
+  assert.match(readme, /vohive-plus-firmware_1\.0\.3_linux_amd64/)
+  assert.match(readme, /\.github\/release-notes\/v1\.0\.3\.md/)
+  assert.match(releaseNotes, /^# VoHive Plus 1\.0\.3/m)
+  assert.match(releaseNotes, /相对 `v1\.0\.2`/)
+  assert.match(releaseNotes, /本机号码/)
+  assert.match(releaseNotes, /EF_MSISDN/)
+  assert.match(releaseWorkflow, /default: '1\.0\.3'/)
+  assert.match(releaseWorkflow, /github\.event\.inputs\.version \|\| '1\.0\.3'/)
+})
+
+test('OpenAPI documents manual local phone endpoint', () => {
+  const spec = readRepoFile('internal/api/openapi.vohive.yaml')
+
+  assert.match(spec, /\/devices\/\{device_id\}\/local-phone:/)
+  assert.match(spec, /summary: 手动设置当前 SIM 本机号码/)
+  assert.match(spec, /#\/components\/schemas\/SetLocalPhoneRequest/)
+  assert.match(spec, /#\/components\/schemas\/SetLocalPhoneResponse/)
+  assert.match(spec, /phone_number:/)
+  assert.match(spec, /local_phone:/)
 })

@@ -606,6 +606,23 @@ func DecodeSwappedBCD(data []byte) string {
 	return string(out)
 }
 
+func DecodeEFMSISDNRecord(record []byte) string {
+	if len(record) < 14 {
+		return ""
+	}
+	tail := record[len(record)-14:]
+	length := int(tail[0])
+	if length < 2 || length > 11 {
+		return ""
+	}
+	bcdLen := length - 1
+	if bcdLen <= 0 || 2+bcdLen > len(tail) {
+		return ""
+	}
+	number := DecodeSwappedBCD(tail[2 : 2+bcdLen])
+	return canonicalPhoneCandidate(number)
+}
+
 func parseCOPSScan(resp string) []OperatorScanEntry {
 	var entries []OperatorScanEntry
 	line, ok := findLineWithPrefix(resp, "+COPS: ")

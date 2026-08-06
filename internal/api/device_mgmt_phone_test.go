@@ -54,6 +54,15 @@ func mgrTestSetOverviewCache(t *testing.T, mgr *esim.Manager, overview *esim.Esi
 	setNestedPrivateField(t, mgr, []string{"overviewCache"}, overview)
 }
 
+func loadDeviceMgmtTestSIMSubscriptionByIMSI(t *testing.T, imsi string) db.SIMSubscription {
+	t.Helper()
+	var sub db.SIMSubscription
+	if err := db.DB.Where("imsi = ?", imsi).First(&sub).Error; err != nil {
+		t.Fatalf("First(subscription) error=%v", err)
+	}
+	return sub
+}
+
 func newTestEsimManager() *esim.Manager {
 	mgr := &esim.Manager{}
 	field := reflect.ValueOf(mgr).Elem().FieldByName("sf")
@@ -144,6 +153,45 @@ func TestBuildOverviewLiteItemSuppressesCachedIMSIDuringIdentityTransition(t *te
 
 	if item.LocalPhone != "" {
 		t.Fatalf("LocalPhone=%q want empty while SIM identity is transitioning", item.LocalPhone)
+	}
+}
+
+func TestHandleDeviceMgmtSetLocalPhoneStoresManualPhoneForCurrentSIM(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	initDeviceMgmtPhoneTestDB(t)
+
+	p := device.NewPool(&config.Config{})
+	w := &device.Worker{ID: "dev-phone-edit"}
+	setNestedPrivateField(t, w, []string{"state", "Identity", "IMSI"}, "imsi-phone-edit")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "ICCID"}, "8986000000000099999")
+	setNestedPrivateField(t, w, []string{"state", "Identity", "Ready"}, true)
+	setNestedPrivateField(t, p, []string{"workers"}, map[string]*device.Worker{"dev-phone-edit": w})
+	server := &Server{pool: p}
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Params = gin.Params{{Key: "device_id", Value: "dev-phone-edit"}}
+	ctx.Request = httptest.NewRequest(http.MethodPatch, "/devices/dev-phone-edit/local-phone", strings.NewReader(`{"phone_number":" tel:+8613500135000 "}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	server.handleDeviceMgmtSetLocalPhone(ctx)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d want=%d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body struct {
+		Status     string `json:"status"`
+		LocalPhone string `json:"local_phone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Unmarshal response error=%v body=%s", err, rec.Body.String())
+	}
+	if body.LocalPhone != "+8613500135000" {
+		t.Fatalf("LocalPhone=%q want=+8613500135000", body.LocalPhone)
+	}
+	sub := loadDeviceMgmtTestSIMSubscriptionByIMSI(t, "imsi-phone-edit")
+	if sub.ManualPhoneNumber != "+8613500135000" || sub.PhoneNumber != "+8613500135000" {
+		t.Fatalf("subscription=%+v, want manual phone saved", sub)
 	}
 }
 

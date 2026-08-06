@@ -117,3 +117,35 @@ func TestGetPhoneNumberPrefersIMSISubscription(t *testing.T) {
 		t.Fatalf("phone=%q, want +447700900127 from IMSI subscription", got)
 	}
 }
+
+func TestManualPhoneStagesByICCIDAndMigratesWithPriority(t *testing.T) {
+	initPhoneNumberTestDB(t)
+	iccid := "8944000000000000007"
+	imsi := "234150000000007"
+
+	if err := RecordModemPhoneNumber("", iccid, "+447700900128"); err != nil {
+		t.Fatalf("RecordModemPhoneNumber error=%v", err)
+	}
+	if err := RecordManualPhoneNumber("", iccid, "+447700900129"); err != nil {
+		t.Fatalf("RecordManualPhoneNumber error=%v", err)
+	}
+	got, err := GetPhoneNumberByIMSIOrICCID("", iccid)
+	if err != nil {
+		t.Fatalf("GetPhoneNumberByIMSIOrICCID error=%v", err)
+	}
+	if got != "+447700900129" {
+		t.Fatalf("phone=%q, want manual staged phone", got)
+	}
+
+	imei := "860000000000007"
+	if err := UpsertSIMCard(iccid, imsi, "", "TestOp", &imei); err != nil {
+		t.Fatalf("UpsertSIMCard error=%v", err)
+	}
+	sub := loadSIMSubscriptionByIMSI(t, imsi)
+	if sub.ManualPhoneNumber != "+447700900129" || sub.PhoneNumber != "+447700900129" {
+		t.Fatalf("subscription=%+v, want manual phone migrated with priority", sub)
+	}
+	if sub.ModemPhoneNumber != "+447700900128" {
+		t.Fatalf("ModemPhoneNumber=%q want staged modem value", sub.ModemPhoneNumber)
+	}
+}

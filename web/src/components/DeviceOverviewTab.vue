@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Eye24Regular, EyeOff24Regular } from '@vicons/fluent'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Edit20Regular, Eye24Regular, EyeOff24Regular, Settings24Regular } from '@vicons/fluent'
 import type { DeviceOverviewItem } from '../types/api'
 import { useSensitiveVisibility } from '../composables/useSensitiveVisibility'
+import { devicesService } from '../services/devices'
+import { errorMessage } from '../services/http'
+import { copyToClipboard } from '../utils/clipboard'
 import { activeEsimProfileDisplayName } from './deviceOverviewActiveEsim'
 import { isControlOnline, isRadioRegistered, isRecoveryPhase, lifecycleStatusLabel } from '../utils/deviceLifecycle'
 import StatusLight from './StatusLight.vue'
 import OperatorSelectionDialog from './OperatorSelectionDialog.vue'
-import { Settings24Regular } from '@vicons/fluent'
 import type { StatusLightTone } from './statusLight'
 
 const props = defineProps<{
@@ -27,6 +30,7 @@ const emit = defineEmits<{
 
 const showSensitive = useSensitiveVisibility()
 const showOperatorSelection = ref(false)
+const localPhoneSaving = ref(false)
 
 const trafficStateLabel = computed(() => {
   const status = props.device?.traffic_meta?.status
@@ -135,6 +139,60 @@ const flightModeStatusText = computed(() => {
 })
 
 const activeEsimProfileName = computed(() => activeEsimProfileDisplayName(props.device))
+
+const localPhoneDisplay = computed(() => {
+  const phone = props.device?.local_phone?.trim()
+  return phone || '--'
+})
+
+const canCopyLocalPhone = computed(() => {
+  return localPhoneDisplay.value !== '--' && localPhoneDisplay.value !== '---'
+})
+
+const localPhoneTitle = computed(() => {
+  if (!showSensitive.value || !canCopyLocalPhone.value) return ''
+  return localPhoneDisplay.value
+})
+
+async function copyLocalPhone() {
+  if (!canCopyLocalPhone.value) return
+  await copyToClipboard(localPhoneDisplay.value, '已复制')
+}
+
+async function editLocalPhone() {
+  const deviceId = props.device?.id
+  if (!deviceId || localPhoneSaving.value) return
+
+  const current = props.device?.local_phone?.trim() || ''
+  const promptResult = await ElMessageBox.prompt(
+    '请输入本机号码，留空可清除手动号码。',
+    '编辑本机号码',
+    {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValue: current,
+      inputPlaceholder: '例如 +8613800138000',
+      inputPattern: /^\+?[0-9\s().-]{0,32}$/,
+      inputErrorMessage: '请输入有效号码，最多 32 个字符'
+    }
+  ).catch(() => null)
+  if (!promptResult) return
+
+  const phoneNumber = String(promptResult.value ?? '').trim()
+  if (phoneNumber === current) return
+
+  localPhoneSaving.value = true
+  try {
+    const result = await devicesService.setLocalPhone(deviceId, phoneNumber)
+    if (!result.ok) throw result.error
+    ElMessage.success(phoneNumber ? '本机号码已保存' : '本机号码已清除')
+    emit('refresh')
+  } catch (e: unknown) {
+    ElMessage.error(errorMessage(e, '保存本机号码失败'))
+  } finally {
+    localPhoneSaving.value = false
+  }
+}
 
 const controlOnline = computed(() => isControlOnline(props.device))
 
@@ -337,7 +395,37 @@ const networkPanelMessage = computed(() => {
         <FieldRow label="IMEI"      :value="device?.modem?.imei"   :sensitive="!showSensitive" monospace copyable />
         <FieldRow label="ICCID"     :value="device?.modem?.iccid"  :sensitive="!showSensitive" monospace copyable />
         <FieldRow label="IMSI"      :value="device?.modem?.imsi"   :sensitive="!showSensitive" monospace copyable />
-        <FieldRow label="本机号码" :value="device?.local_phone || '--'"  :sensitive="!showSensitive" monospace copyable />
+        <div class="flex w-full min-w-0 items-center justify-between gap-3 overflow-hidden">
+          <span class="text-gray-500 shrink-0 whitespace-nowrap">本机号码</span>
+          <div class="flex min-w-0 flex-1 items-center justify-end gap-1.5">
+            <span
+              class="block min-w-0 truncate text-right font-mono"
+              :class="[
+                canCopyLocalPhone ? 'cursor-pointer hover:underline' : '',
+                !showSensitive ? 'blur-sm select-none transition-all' : ''
+              ]"
+              :title="localPhoneTitle"
+              @click="copyLocalPhone"
+            >
+              {{ localPhoneDisplay }}
+            </span>
+            <el-tooltip content="编辑本机号码" placement="top">
+              <el-button
+                size="small"
+                text
+                circle
+                :loading="localPhoneSaving"
+                :disabled="!device?.id"
+                class="!h-6 !w-6 !p-0 shrink-0"
+                @click.stop="editLocalPhone"
+              >
+                <el-icon size="15">
+                  <Edit20Regular />
+                </el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
+        </div>
         <div v-if="device?.e911_setup_available" class="flex justify-between gap-3">
           <span class="text-gray-500">E911地址</span>
           <el-button

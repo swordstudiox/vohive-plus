@@ -806,3 +806,37 @@
 ### 评审记录
 
 - 2026-08-06 阶段 6G 验证：WSL2 `go test ./internal/device -run "PrepareWSLUSB" -count=1` 通过；WSL2 `go test ./internal/device ./internal/api -count=1` 通过；修复后的 `/opt/vohive/bin/vohive --prepare-usb` 返回 `supported_device_found=true`、`prepared=true`，设备为 `/dev/cdc-wdm0` + `wwan0` + `/dev/ttyUSB0-3`，driver 为 `qmi_wwan`。
+
+## 阶段 6H：本机号码自动识别与手动录入
+
+### 根因调查
+
+- [x] 用户截图显示 DITO eSIM 详情中 IMEI/ICCID/IMSI 可读，但“本机号码”为 `--`。
+- [x] 后端 UI 字段 `local_phone` 来自数据库 `sim_subscriptions.phone_number`，启动同步会通过 `GetMSISDN` 尝试写入。
+- [x] 实机 `AT+CNUM` 返回成功但响应为空；`AT+CRSM` 读取 EF_MSISDN (`6F40`) 返回全 `FF`，说明当前 DITO eSIM 没把号码写入 SIM 文件。
+- [x] 当前 AT 后端缺少 MBIM 已有的 EF_MSISDN fallback；即使部分 SIM 的 `AT+CNUM` 为空但 EF 有号码，AT 模式也读不到。
+- [x] 对当前这张 eSIM，自动来源为空时只能通过 VoWiFi 学习、运营商专用 USSD/短信内容或用户手动录入补全，不能凭空推断。
+
+### 实施步骤
+
+- [x] RED：AT `QueryMSISDN` 在 `AT+CNUM` 为空时应读取 EF_MSISDN 记录并解码。
+- [x] RED：手动号码应有独立字段，优先级高于 VoWiFi 和 modem 自动学习。
+- [x] RED：设备详情 API 可按当前 IMSI/ICCID 保存手动本机号码。
+- [x] GREEN：实现 AT fallback、数据库手动号码优先级和设备 API。
+- [x] GREEN：前端设备详情提供本机号码编辑入口，保存后刷新详情。
+- [x] 验证 Go 单测、Web 类型检查/构建、实机 API 保存。
+- [x] 记录评审和教训。
+
+### 版本发布准备
+
+- [x] 本次是用户可见 bugfix，按语义化版本规则从 `1.0.2` 递增到 `1.0.3`。
+- [x] README、Release workflow 默认版本、桌面 package/Tauri/Cargo 元数据已同步为 `1.0.3`。
+- [x] 新增 `.github/release-notes/v1.0.3.md`，说明相对 `v1.0.2` 的更新。
+
+### 评审记录
+
+- 2026-08-06 阶段 6H 根因确认：用户截图中的 DITO eSIM 可读 IMEI/ICCID/IMSI，但 `AT+CNUM` 为空，EF_MSISDN (`6F40`) 读取为全 `FF`，说明该 eSIM 没把本机号码写进 SIM 文件；程序不能从 IMSI/ICCID/运营商名称反推出号码。
+- 2026-08-06 阶段 6H 实现：AT 后端新增 EF_MSISDN fallback；数据库新增 `manual_phone_number` 并把最终显示优先级集中为 `manual > vowifi > modem`；新增 `PATCH /api/devices/{device_id}/local-phone`，切卡身份未确认时返回 409，空字符串用于清除手动号码；设备详情页“本机号码”旁新增编辑按钮，保存后刷新概览。
+- 2026-08-06 阶段 6H 验证：`go test ./internal/modem ./internal/db ./internal/api -run "QueryMSISDNFallsBack|ManualPhone|SetLocalPhone" -count=1` 通过；`go test ./internal/modem ./internal/db ./internal/api ./internal/device -count=1` 通过；`npm run test --prefix web` 25 项通过；`npm run typecheck --prefix web` 通过；`npm run build --prefix web` 通过；`node --test tests/repositoryDocs.test.mjs` 6 项通过；桌面 `node --test tests/*.test.mjs` 12 项通过；`cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 26 项通过；`pnpm run build` 和 `pnpm tauri build --debug` 通过。
+- 2026-08-06 阶段 6H 实机验证：WSL 后端已部署并以 `1.0.3` 启动，`/api/system/info` 返回 `version=1.0.3`、`build_time=2026-08-06T05:36:53Z`；当前设备 `wwan0` 在线，`PATCH /api/devices/wwan0/local-phone` 写入测试号码 `+15550001003` 后 overview 立即显示，随后用空字符串清除，清除后 overview 回到空值，测试号码未保留。
+- 2026-08-06 阶段 6H 产物重编译：已同步最新 `web/dist` 到 `internal/web/dist`；已用 `global.Version=1.0.3` 和构建时间重新编译 Linux amd64 后端 `dist/vohive-open_linux_amd64`；已同步到桌面壳资源并重新生成 debug 桌面程序 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。

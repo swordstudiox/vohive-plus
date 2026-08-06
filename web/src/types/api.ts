@@ -307,6 +307,14 @@ export type PrepareUSBResponse = {
   devices?: PreparedUSBDevice[]
 }
 
+export type SetLocalPhoneRequest = {
+  phone_number: string
+}
+
+export type SetLocalPhoneResponse = {
+  local_phone?: string
+}
+
 export type DashboardDevice = {
   id: string
   name?: string

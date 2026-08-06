@@ -9,7 +9,7 @@ on:
       version:
         description: 'Release version, with or without a leading v'
         required: false
-        default: '1.0.2'
+        default: '1.0.3'
       enable_upx:
         description: 'Enable UPX compression for Linux runtime binaries (true/false)'
         required: false
@@ -39,7 +39,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             RAW_VERSION="${GITHUB_REF_NAME}"
           else
-            RAW_VERSION="${{ github.event.inputs.version || '1.0.2' }}"
+            RAW_VERSION="${{ github.event.inputs.version || '1.0.3' }}"
           fi
           VERSION="${RAW_VERSION#v}"
           TAG="v${VERSION}"

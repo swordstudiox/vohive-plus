@@ -1,6 +1,6 @@
 import { api } from '../stores/auth'
 import { callService } from './http'
-import type { CarrierWebsheetInfo, DeviceConfigDTO, DiscoveredDevice, EsimNotificationItem, EsimOverviewResponse, EsimSpaceDelta, PrepareUSBResponse } from '../types/api'
+import type { CarrierWebsheetInfo, DeviceConfigDTO, DiscoveredDevice, EsimNotificationItem, EsimOverviewResponse, EsimSpaceDelta, PrepareUSBResponse, SetLocalPhoneResponse } from '../types/api'
 import type { DeviceDetailVM, DeviceListVM } from '../types/view-model'
 import axios from 'axios'
 
@@ -160,6 +160,14 @@ export const devicesService = {
     return callService(async () => {
       await api.patch(`/devices/${id}/roaming`, { enabled: roamingEnabled })
       return true
+    })
+  },
+  setLocalPhone(id: string, phoneNumber: string) {
+    return callService(async () => {
+      const res = await api.patch<SetLocalPhoneResponse>(`/devices/${id}/local-phone`, { phone_number: phoneNumber })
+      return {
+        localPhone: res.data?.local_phone || phoneNumber
+      }
     })
   },
   rotateIP(id: string) {

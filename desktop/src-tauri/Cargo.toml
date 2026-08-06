@@ -1,6 +1,6 @@
 [package]
 name = "vohive-plus-desktop"
-version = "1.0.2"
+version = "1.0.3"
 description = "VoHive Plus Windows desktop shell"
 authors = ["VoHive Plus"]
 license = "PolyForm-Noncommercial-1.0.0"

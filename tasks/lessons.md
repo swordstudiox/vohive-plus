@@ -128,3 +128,10 @@
 - DJI/Baiwang `2ca3:4006` 在 WSL2 中准备 QMI 拓扑时，`option1/new_id` 只解决串口接口接管问题；`qmi_wwan/bind` 是否接受 `1-1:1.4` 还取决于 `/sys/bus/usb/drivers/qmi_wwan/new_id` 是否登记同一个 VID/PID。
 - 遇到 `qmi_wwan/bind: no such device` 时，不能先把它归为内核异步竞态。要检查 `qmi_wwan/new_id`、interface 当前 driver、`usbmisc/cdc-wdm*` 和 `net/wwan*` 是否一致，再决定是补动态 ID、重试还是走 ECM 分支。
 - ECM 与 QMI 的 USB prepare 分支必须保持互斥：vendor-specific 接口才登记并绑定 `qmi_wwan`，`class=02/sub=06` 的 ECM 控制接口应走 `cdc_ether`，否则会把用户切到 ECM 后的拓扑再次破坏。
+
+## 2026-08-06 本机号码识别
+
+- 很多 SIM/eSIM 不会把 MSISDN 写入卡内资料。`AT+CNUM` 为空、EF_MSISDN (`6F40`) 全 `FF` 时，程序没有可靠来源推断“本机号码”，只能显示为空或让用户手动录入。
+- 自动学习来源要分层保存，不能把用户手动确认的号码伪装成 VoWiFi 或 modem 读取值；最终展示优先级应是 `manual > vowifi > modem`，清除手动号码后再回退到自动来源。
+- 手动本机号码必须绑定当前已确认的 IMSI/ICCID；eSIM 切卡身份未确认时应拒绝写入，避免把号码写到旧卡。
+- 从 PowerShell 调 WSL 构建时不要在 Bash 片段里依赖 `$(date ...)` 这类嵌套展开；本地构建版本信息可由 PowerShell 先生成 UTC 时间，再作为普通字符串传入 Go `-ldflags`，避免 `BuildTime` 被注入为空。

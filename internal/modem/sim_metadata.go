@@ -9,14 +9,15 @@ import (
 
 // 各种 SIM 卡基本数据文件 (EF) 的文件 ID 常量
 const (
-	efIMSI = 0x6F07 // IMSI
-	efAD   = 0x6FAD // Administrative Data, byte 4 carries MNC length
-	efGID1 = 0x6F3E // Group Identifier 1
-	efGID2 = 0x6F3F // Group Identifier 2
-	efPNN  = 0x6FC5 // PLMN Network Name
-	efOPL  = 0x6FC6 // Operator PLMN List
-	efSST  = 0x6F38 // SIM Service Table (GSM)
-	efUST  = 0x6F38 // USIM Service Table (3G/4G/5G)
+	efIMSI   = 0x6F07 // IMSI
+	efMSISDN = 0x6F40 // MSISDN
+	efAD     = 0x6FAD // Administrative Data, byte 4 carries MNC length
+	efGID1   = 0x6F3E // Group Identifier 1
+	efGID2   = 0x6F3F // Group Identifier 2
+	efPNN    = 0x6FC5 // PLMN Network Name
+	efOPL    = 0x6FC6 // Operator PLMN List
+	efSST    = 0x6F38 // SIM Service Table (GSM)
+	efUST    = 0x6F38 // USIM Service Table (3G/4G/5G)
 )
 
 const (

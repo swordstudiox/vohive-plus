@@ -855,6 +855,37 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorMessage'
 
+  /devices/{device_id}/local-phone:
+    patch:
+      tags: [devices]
+      summary: 手动设置当前 SIM 本机号码
+      description: >
+        当 `AT+CNUM`、EF_MSISDN 或 VoWiFi 学习都无法得到号码时，可手动保存当前 SIM 的本机号码。
+        该值按当前 IMSI 写入；IMSI 尚未确认时按 ICCID 暂存，后续身份确认后迁移。传空字符串会清除手动号码。
+      parameters:
+        - $ref: '#/components/parameters/DeviceIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetLocalPhoneRequest'
+      responses:
+        '200':
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetLocalPhoneResponse'
+        '400':
+          $ref: '#/components/responses/ErrorMessage'
+        '404':
+          $ref: '#/components/responses/ErrorMessage'
+        '409':
+          $ref: '#/components/responses/ErrorMessage'
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+
   /devices/{device_id}/actions/ussd:
     post:
       tags: [devices]
@@ -2839,6 +2870,24 @@ components:
           type: string
         response:
           type: string
+
+    SetLocalPhoneRequest:
+      type: object
+      required: [phone_number]
+      properties:
+        phone_number:
+          type: string
+          description: 手动本机号码；传空字符串清除手动值。
+          example: "+8613800138000"
+
+    SetLocalPhoneResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        local_phone:
+          type: string
+          description: 当前最终展示号码，优先级为手动值、VoWiFi 学习值、调制解调器自动值。
 
     ExecuteUSSDRequest:
       type: object

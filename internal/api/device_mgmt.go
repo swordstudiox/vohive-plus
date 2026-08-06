@@ -1584,6 +1584,10 @@ type executeATRequest struct {
 	TimeoutMs int    `json:"timeout_ms"`
 }
 
+type setLocalPhoneRequest struct {
+	PhoneNumber string `json:"phone_number"`
+}
+
 type manualATSession interface {
 	Execute(cmd string, timeout time.Duration) (string, error)
 	Close() error
@@ -1669,6 +1673,53 @@ func (s *Server) handleDeviceMgmtExecuteAT(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "response": resp})
+}
+
+func (s *Server) handleDeviceMgmtSetLocalPhone(c *gin.Context) {
+	id := deviceIDParam(c)
+	var req setLocalPhoneRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "参数错误"})
+		return
+	}
+
+	worker := s.pool.GetWorker(id)
+	if worker == nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到或未运行"})
+		return
+	}
+	if worker.SIMIdentitySuppressesOverviewIMSI() {
+		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "SIM 身份正在切换，请等待当前 ICCID/IMSI 确认后再设置本机号码"})
+		return
+	}
+
+	rawPhone := strings.TrimSpace(req.PhoneNumber)
+	phone := ""
+	if rawPhone != "" {
+		phone = db.NormalizeSIMPhoneNumber(rawPhone)
+		if phone == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "本机号码格式无效，请输入 6-15 位数字，可带 + 号"})
+			return
+		}
+	}
+
+	status := worker.ProjectDeviceStatus()
+	imsi := strings.TrimSpace(status.IMSI)
+	iccid := strings.TrimSpace(status.ICCID)
+	if imsi == "" && iccid == "" {
+		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "当前设备尚未确认 SIM 身份，无法保存本机号码"})
+		return
+	}
+	if err := db.RecordManualPhoneNumber(imsi, iccid, phone); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "保存本机号码失败: " + err.Error()})
+		return
+	}
+
+	localPhone := overviewLocalPhone(imsi, iccid)
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "ok",
+		"local_phone": localPhone,
+	})
 }
 
 func isTransientATBackend(mode string) bool {

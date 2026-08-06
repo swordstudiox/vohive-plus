@@ -217,7 +217,10 @@ func (m *Manager) QueryMSISDN() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return parseCNUM(resp), nil
+	if phone := parseCNUM(resp); phone != "" {
+		return phone, nil
+	}
+	return m.queryMSISDNFromEF(), nil
 }
 
 // QueryUSBNetMode 查询 USBNET 模式
@@ -561,6 +564,19 @@ func (m *Manager) readSIMRecordEF(fileID int, record int, length int) ([]byte, e
 		return nil, fmt.Errorf("EF %d record %d hex decode failed: %w", fileID, record, err)
 	}
 	return data, nil
+}
+
+func (m *Manager) queryMSISDNFromEF() string {
+	for _, length := range []int{28, 34, 14} {
+		data, err := m.readSIMRecordEF(efMSISDN, 1, length)
+		if err != nil {
+			continue
+		}
+		if phone := DecodeEFMSISDNRecord(data); phone != "" {
+			return phone
+		}
+	}
+	return ""
 }
 
 func (m *Manager) QuerySIMMetadata() (*SIMMetadata, error) {
