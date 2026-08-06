@@ -117,6 +117,26 @@ func TestReadISIMIdentityReturnsErrorWhenNoEFCanBeRead(t *testing.T) {
 	}
 }
 
+func TestPrepareStartPreservesAllZeroTwoDigitMNC(t *testing.T) {
+	prepared, err := PrepareStart(PrepareStartInput{
+		Profile: Profile{
+			IMSI: "454003063219947",
+			MCC:  "454",
+			MNC:  "00",
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrepareStart() error = %v", err)
+	}
+	if prepared.EffectiveCarrier.MNC != "00" {
+		t.Fatalf("effective MNC = %q, want 00", prepared.EffectiveCarrier.MNC)
+	}
+	wantEPDG := "epdg.epc.mnc000.mcc454.pub.3gppnetwork.org"
+	if prepared.EPDGAddr != wantEPDG {
+		t.Fatalf("EPDGAddr = %q, want %q", prepared.EPDGAddr, wantEPDG)
+	}
+}
+
 func isimTLVString(s string) []byte {
 	return append([]byte{0x80, byte(len(s))}, []byte(s)...)
 }

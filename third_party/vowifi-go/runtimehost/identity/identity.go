@@ -78,10 +78,6 @@ func NormalizeProfile(p Profile) Profile {
 	if p.MNC == "" && len(p.IMSI) >= 6 {
 		p.MNC = p.IMSI[3:6]
 	}
-	p.MNC = strings.TrimLeft(p.MNC, "0")
-	if p.MNC == "" && len(p.IMSI) >= 6 {
-		p.MNC = p.IMSI[3:6]
-	}
 	return p
 }
 

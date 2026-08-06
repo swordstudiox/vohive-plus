@@ -841,3 +841,24 @@
 - 2026-08-06 阶段 6H 实机验证：WSL 后端已部署并以 `1.0.3` 启动，`/api/system/info` 返回 `version=1.0.3`、`build_time=2026-08-06T05:36:53Z`；当前设备 `wwan0` 在线，`PATCH /api/devices/wwan0/local-phone` 写入测试号码 `+15550001003` 后 overview 立即显示，随后用空字符串清除，清除后 overview 回到空值，测试号码未保留。
 - 2026-08-06 阶段 6H 产物重编译：已同步最新 `web/dist` 到 `internal/web/dist`；已用 `global.Version=1.0.3` 和构建时间重新编译 Linux amd64 后端 `dist/vohive-open_linux_amd64`；已同步到桌面壳资源并重新生成 debug 桌面程序 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。
 - 2026-08-06 阶段 6H 发布说明补救：复查 `git log --oneline v1.0.2..v1.0.3` 后确认 `46c3740 修复 WSL USB 准备漏登记 qmi_wwan 动态 ID` 被漏写进 `v1.0.3` 发布说明；已补充 `.github/release-notes/v1.0.3.md`，并同步更新 GitHub Release 页面正文。
+
+## 阶段 6I：VoWiFi ePDG MNC=00 解析修复
+
+### 根因调查
+
+- [x] 用户截图显示 VoWiFi 启动失败：`SWU tunnel establishment failed: read udp 127.0.0.1:47024->127.0.0.1:4500: i/o timeout`。
+- [x] WSL 日志显示当前 SIM 实时归属为 `mcc=454, mnc=00`，但 VoWiFi 准备画像变成 `matched_plmn=454/003`，ePDG 被派生为 `epdg.epc.mnc003.mcc454.pub.3gppnetwork.org`。
+- [x] DNS 验证显示 `mnc003` 域名返回 `127.0.0.1`，而 `mnc000` 域名返回公网 ePDG 地址；因此失败不是 UI 开关或 UDP 监听缺失，而是 MNC 归一化把合法的全零二位 MNC 误当空值。
+
+### 实施步骤
+
+- [x] RED：新增 `TestPrepareStartPreservesAllZeroTwoDigitMNC`，锁定 `MNC=00` 时应保留为 `00` 并生成 `mnc000` ePDG。
+- [x] GREEN：调整 `identity.NormalizeProfile`，仅在 MNC 完全缺失时从 IMSI 推导，不再对显式 MNC 执行 `TrimLeft("0")`。
+- [x] 验证 VoWiFi identity、SWU 和项目 VoWiFi 相关测试。
+
+### 部署记录
+
+- [x] 2026-08-06 已重新编译 Linux amd64 后端到 `dist/vohive-open_linux_amd64`。
+- [x] 2026-08-06 已用 WSL root 备份旧后端为 `/opt/vohive/bin/vohive.bak-20260806103845`，并部署新后端到 `/opt/vohive/bin/vohive`。
+- [x] 2026-08-06 已停止旧进程并用隐藏 `wsl.exe` 启动新后端；`/ping` 返回 `pong`，新进程 PID 为 `8311`。
+- [x] 2026-08-06 已确认 `/opt/vohive/bin/vohive` 与本地 `dist/vohive-open_linux_amd64` 的 SHA256 均为 `bd55b5b760134023a710d70c17dc54e72ae8e1a2cb56d8eea35522e325bccad9`。
