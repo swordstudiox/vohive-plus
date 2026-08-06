@@ -122,3 +122,9 @@
 - Release zip 版本、Tauri app version、Rust crate version、窗口标题、README 和 release notes 必须同步，避免同一个版本号对应不同内容，导致用户无法判断当前打开的是哪个软件。
 - Release workflow 戳 Rust `Cargo.toml` 版本号时不要用全局正则替换所有 `version =`；应只在 `[package]` 段内替换当前 crate 版本，避免误改 dependency、workspace 或其它表。
 - 当前 Linux 后端运行体没有 `--version` 参数；构建后验证版本注入应通过运行中的版本 API、Release 资产名、ldflags 记录或二进制字符串检查，不要把 `--version` 失败误判成编译失败。
+
+## 2026-08-06 WSL USB qmi_wwan 动态 ID
+
+- DJI/Baiwang `2ca3:4006` 在 WSL2 中准备 QMI 拓扑时，`option1/new_id` 只解决串口接口接管问题；`qmi_wwan/bind` 是否接受 `1-1:1.4` 还取决于 `/sys/bus/usb/drivers/qmi_wwan/new_id` 是否登记同一个 VID/PID。
+- 遇到 `qmi_wwan/bind: no such device` 时，不能先把它归为内核异步竞态。要检查 `qmi_wwan/new_id`、interface 当前 driver、`usbmisc/cdc-wdm*` 和 `net/wwan*` 是否一致，再决定是补动态 ID、重试还是走 ECM 分支。
+- ECM 与 QMI 的 USB prepare 分支必须保持互斥：vendor-specific 接口才登记并绑定 `qmi_wwan`，`class=02/sub=06` 的 ECM 控制接口应走 `cdc_ether`，否则会把用户切到 ECM 后的拓扑再次破坏。

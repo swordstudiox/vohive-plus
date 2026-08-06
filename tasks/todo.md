@@ -785,3 +785,24 @@
 - 2026-08-06 发布前本地产物确认：已重新执行 Web build 并同步 embed dist；Linux amd64 后端已用 `global.Version=1.0.2` 重编译，二进制大小约 49.55 MB，已确认包含 `1.0.2` 版本字符串；桌面 debug 构建生成 `desktop/src-tauri/target/debug/vohive-plus-desktop.exe`。注意后端二进制当前没有 `--version` 参数，版本验证不能使用该参数。
 - 2026-08-06 最终提交前验证：`node --test tests/*.test.mjs` 8 项通过；`desktop` 下 `node --test tests/*.test.mjs` 12 项通过；`cargo test --manifest-path desktop/src-tauri/Cargo.toml --offline` 26 项通过；WSL2 `go test ./internal/api ./internal/device ./internal/db -count=1` 通过；WSL2 `npm run test --prefix web` 22 项通过；WSL2 `npm run typecheck --prefix web` 通过；WSL2 `npm run build --prefix web` 通过；`desktop` 下 `pnpm run build` 通过；`desktop` 下 `pnpm tauri build --debug` 通过；`git diff --check` 无 whitespace error，仅有 Windows CRLF 提示。
 - 2026-08-06 阶段 6E/6F 发布完成：发布提交 `7b34068812221369836001b584e47543ab6058f4` 已推送到 `origin/main`；注释 tag `v1.0.2` 已推送，tag object 为 `cbe0b79263223dfe55c7e911749575e65be7edeb`，指向提交 `7b34068812221369836001b584e47543ab6058f4`。GitHub Actions run `31068541380` 已完成且结论为 `success`，Release `VoHive Plus 1.0.2` 已发布到 `https://github.com/swordstudiox/vohive-plus/releases/tag/v1.0.2`。Release 资产共 8 个：Windows x64 桌面便携 zip、Linux amd64/arm64/armv7 后端运行时，以及对应 sha256 文件。
+
+## 阶段 6G：WSL USB qmi_wwan 动态 ID 修复
+
+### 根因调查
+
+- [x] 用户插入 DJI/Baiwang 模块后，桌面 UI 报错：`绑定 interface 1-1:1.4 到 qmi_wwan 失败: write /sys/bus/usb/drivers/qmi_wwan/bind: no such device`。
+- [x] 实机状态显示 `1-1:1.4` 从 `option` 释放后未绑定驱动，且没有生成 `/dev/cdc-wdm0`；`qmi_wwan` 驱动目录存在 `new_id`。
+- [x] 临时实机验证确认：先写 `/sys/bus/usb/drivers/qmi_wwan/new_id` 为 `2ca3 4006`，再写 `qmi_wwan/bind` 后可生成 `/dev/cdc-wdm0` 与 `wwan0`。
+- [x] 根因不是单纯的 bind 竞态，而是 WSL USB prepare 只给 `option1/new_id` 登记了 Baiwang VID/PID，漏给 `qmi_wwan/new_id` 登记。
+
+### 实施步骤
+
+- [x] RED：新增 `TestPrepareWSLUSBRegistersBaiwangIDWithQMIWWANBeforeBind`，模拟未登记 `qmi_wwan/new_id` 时 bind 稳定返回 `no such device`。
+- [x] GREEN：在 QMI interface bind 前确保 `qmi_wwan/new_id` 已登记 `2ca3 4006`。
+- [x] 补齐既有 QMI 测试夹具中的 `qmi_wwan/new_id` 文件和断言。
+- [x] 保持 ECM 路径不写 `qmi_wwan/new_id`，避免 ECM 模式被错误拉回 QMI。
+- [x] 重新编译 Linux amd64 后端，同步桌面资源并部署到 WSL `/opt/vohive/bin/vohive`。
+
+### 评审记录
+
+- 2026-08-06 阶段 6G 验证：WSL2 `go test ./internal/device -run "PrepareWSLUSB" -count=1` 通过；WSL2 `go test ./internal/device ./internal/api -count=1` 通过；修复后的 `/opt/vohive/bin/vohive --prepare-usb` 返回 `supported_device_found=true`、`prepared=true`，设备为 `/dev/cdc-wdm0` + `wwan0` + `/dev/ttyUSB0-3`，driver 为 `qmi_wwan`。

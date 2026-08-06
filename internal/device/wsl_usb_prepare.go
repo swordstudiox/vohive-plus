@@ -177,6 +177,15 @@ func findBaiwangUSBDevices(usbDevicesPath string) ([]string, error) {
 
 func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string, write func(string, string) error) (string, error) {
 	newIDPath := filepath.Join(usbSerialDriversPath, "option1", "new_id")
+	return ensureDriverNewID(newIDPath, vendorID, productID, "option-new-id", write)
+}
+
+func ensureQMIWWANNewID(usbDriversPath, vendorID, productID string, write func(string, string) error) (string, error) {
+	newIDPath := filepath.Join(usbDriversPath, "qmi_wwan", "new_id")
+	return ensureDriverNewID(newIDPath, vendorID, productID, "qmi-wwan-new-id", write)
+}
+
+func ensureDriverNewID(newIDPath, vendorID, productID, actionPrefix string, write func(string, string) error) (string, error) {
 	idLine := strings.ToLower(strings.TrimSpace(vendorID + " " + productID))
 	if existing := strings.ToLower(readTextFile(newIDPath)); containsLine(existing, idLine) {
 		return "", nil
@@ -185,9 +194,9 @@ func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string, write f
 		if isAlreadyBoundSysfsError(err) {
 			return "", nil
 		}
-		return "", fmt.Errorf("绑定 option 驱动 VID/PID %s 失败: %w", idLine, err)
+		return "", fmt.Errorf("绑定驱动 VID/PID %s 到 %s 失败: %w", idLine, filepath.Base(filepath.Dir(newIDPath)), err)
 	}
-	return "option-new-id:" + strings.ReplaceAll(idLine, " ", ":"), nil
+	return actionPrefix + ":" + strings.ReplaceAll(idLine, " ", ":"), nil
 }
 
 func bindBaiwangDataInterface(opts WSLUSBPrepareOptions, usbPath string) ([]string, error) {
@@ -206,7 +215,12 @@ func bindBaiwangQMIInterface(opts WSLUSBPrepareOptions, usbPath string) ([]strin
 		return nil, nil
 	}
 
-	actions := make([]string, 0, 2)
+	actions := make([]string, 0, 3)
+	if action, err := ensureQMIWWANNewID(opts.USBDriversPath, baiwangVendorID, baiwangProductID, opts.SysfsWrite); err != nil {
+		return actions, err
+	} else if action != "" {
+		actions = append(actions, action)
+	}
 	if driver != "" {
 		if err := opts.SysfsWrite(filepath.Join(opts.USBDriversPath, driver, "unbind"), interfaceName); err != nil && !isNotBoundSysfsError(err) {
 			return actions, fmt.Errorf("释放 interface %s 的 %s 驱动失败: %w", interfaceName, driver, err)
