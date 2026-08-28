@@ -54,6 +54,7 @@ type IKEPacketTunnelManagerConfig struct {
 	SIM                      sim.AKAProvider
 	Random                   io.Reader
 	Timeout                  time.Duration
+	EPDGCandidateResolver    func(context.Context, string) ([]string, error)
 	LocalIP                  net.IP
 	RemoteIP                 net.IP
 	LocalPort                uint16
@@ -134,11 +135,6 @@ func (m *IKEPacketTunnelManager) EstablishTunnel(ctx context.Context, cfg Tunnel
 	if random == nil {
 		random = rand.Reader
 	}
-	transportCfg, espCfg := m.transportConfigs(cfg, epdg)
-	transport, err := m.ikeTransport(cfg, transportCfg)
-	if err != nil {
-		return nil, err
-	}
 	childSPI, err := m.childSPI(random)
 	if err != nil {
 		return nil, err
@@ -147,85 +143,108 @@ func (m *IKEPacketTunnelManager) EstablishTunnel(ctx context.Context, cfg Tunnel
 	if initRunner == nil {
 		initRunner = ikev2.RunIKE_SA_INIT
 	}
-	init, err := initRunner(ctx, ikev2.InitConfig{
-		Transport:  transport,
-		Random:     random,
-		SA:         m.Config.SA,
-		LocalIP:    transportCfg.LocalIP,
-		LocalPort:  transportCfg.LocalPort,
-		RemoteIP:   transportCfg.RemoteIP,
-		RemotePort: transportCfg.RemotePort,
-	})
-	if err != nil {
-		return nil, err
-	}
 	authRunner := m.Config.AuthRunner
 	if authRunner == nil {
 		authRunner = ikev2.RunIKE_AUTH_Full
 	}
-	reauth := m.Config.Reauthentication.clone()
-	if !reauth.Usable() {
-		reauth = EAPReauthenticationState{}
-	}
-	auth, err := authRunner(ctx, ikev2.FullAuthConfig{
-		Transport:          transport,
-		Init:               init,
-		Keys:               init.Keys,
-		SIM:                provider,
-		EAPKeys:            reauth.Keys,
-		InitiatorID:        initiatorID,
-		EAPIdentity:        identity,
-		EAPReauthIdentity:  reauth.Identity,
-		EAPReauthCounter:   reauth.Counter,
-		EAPReauthCounterOK: reauth.CounterOK,
-		ChildSA:            m.Config.ChildSA,
-		ChildSPI:           childSPI,
-		TSi:                m.Config.TSi,
-		TSr:                m.Config.TSr,
-		Configuration:      m.Config.Configuration,
-		Random:             random,
-	})
+	candidates, err := m.resolveEPDGCandidates(ctx, epdg)
 	if err != nil {
 		return nil, err
 	}
-	if auth.ChildSA == nil {
-		return nil, fmt.Errorf("%w: IKE_AUTH completed without CHILD_SA", ErrTunnelNotReady)
-	}
-	child := *auth.ChildSA
-	m.updateReauthenticationState(auth)
-	espTransport, err := m.espTransport(cfg, espCfg)
-	if err != nil {
-		return nil, err
-	}
-	result := tunnelResultFromIKE(cfg, epdg, init, child)
-	closeHandler, mobikeHandler := m.controlHandlers(transport, init, auth, child, result, transportCfg)
-	sessionFactory := m.Config.PacketSessionFactory
-	if sessionFactory == nil {
-		sessionFactory = func(pc PacketSessionConfig) (TunnelSession, error) {
-			return NewPacketSession(pc)
+	var lastErr error
+	for _, candidate := range candidates {
+		transportCfg, espCfg := m.transportConfigs(cfg, candidate)
+		transport, err := m.ikeTransport(cfg, transportCfg)
+		if err != nil {
+			lastErr = err
+			continue
 		}
-	}
-	session, err := sessionFactory(PacketSessionConfig{
-		Result:        result,
-		ChildSA:       child,
-		Transport:     espTransport,
-		Random:        random,
-		MOBIKEHandler: mobikeHandler,
-		CloseHandler:  closeHandler,
-	})
-	if err != nil {
-		if closer, ok := espTransport.(ESPPacketTransportCloser); ok {
-			_ = closer.Close(ctx)
+		init, err := initRunner(ctx, ikev2.InitConfig{
+			Transport:  transport,
+			Random:     random,
+			SA:         m.Config.SA,
+			LocalIP:    transportCfg.LocalIP,
+			LocalPort:  transportCfg.LocalPort,
+			RemoteIP:   transportCfg.RemoteIP,
+			RemotePort: transportCfg.RemotePort,
+		})
+		if err != nil {
+			lastErr = err
+			continue
 		}
-		return nil, err
-	}
-	if session == nil {
-		if closer, ok := espTransport.(ESPPacketTransportCloser); ok {
-			_ = closer.Close(ctx)
+		reauth := m.Config.Reauthentication.clone()
+		if !reauth.Usable() {
+			reauth = EAPReauthenticationState{}
 		}
-		return nil, fmt.Errorf("%w: packet session factory returned nil", ErrInvalidIKETunnelManager)
+		auth, err := authRunner(ctx, ikev2.FullAuthConfig{
+			Transport:          transport,
+			Init:               init,
+			Keys:               init.Keys,
+			SIM:                provider,
+			EAPKeys:            reauth.Keys,
+			InitiatorID:        initiatorID,
+			EAPIdentity:        identity,
+			EAPReauthIdentity:  reauth.Identity,
+			EAPReauthCounter:   reauth.Counter,
+			EAPReauthCounterOK: reauth.CounterOK,
+			ChildSA:            m.Config.ChildSA,
+			ChildSPI:           childSPI,
+			TSi:                m.Config.TSi,
+			TSr:                m.Config.TSr,
+			Configuration:      m.Config.Configuration,
+			Random:             random,
+		})
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if auth.ChildSA == nil {
+			lastErr = fmt.Errorf("%w: IKE_AUTH completed without CHILD_SA", ErrTunnelNotReady)
+			continue
+		}
+		child := *auth.ChildSA
+		m.updateReauthenticationState(auth)
+		espTransport, err := m.espTransport(cfg, espCfg)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		result := tunnelResultFromIKE(cfg, epdg, init, child)
+		closeHandler, mobikeHandler := m.controlHandlers(transport, init, auth, child, result, transportCfg)
+		sessionFactory := m.Config.PacketSessionFactory
+		if sessionFactory == nil {
+			sessionFactory = func(pc PacketSessionConfig) (TunnelSession, error) {
+				return NewPacketSession(pc)
+			}
+		}
+		session, err := sessionFactory(PacketSessionConfig{
+			Result:        result,
+			ChildSA:       child,
+			Transport:     espTransport,
+			Random:        random,
+			MOBIKEHandler: mobikeHandler,
+			CloseHandler:  closeHandler,
+		})
+		if err != nil {
+			lastErr = err
+			if closer, ok := espTransport.(ESPPacketTransportCloser); ok {
+				_ = closer.Close(ctx)
+			}
+			continue
+		}
+		if session == nil {
+			lastErr = fmt.Errorf("%w: packet session factory returned nil", ErrInvalidIKETunnelManager)
+			if closer, ok := espTransport.(ESPPacketTransportCloser); ok {
+				_ = closer.Close(ctx)
+			}
+			continue
+		}
+		return session, nil
 	}
-	return session, nil
+	if lastErr == nil {
+		lastErr = fmt.Errorf("%w: no usable ePDG candidate found", ErrInvalidIKETunnelManager)
+	}
+	return nil, lastErr
 }
 
 func (m *IKEPacketTunnelManager) updateReauthenticationState(auth ikev2.FullAuthResult) {
@@ -268,7 +287,10 @@ func (m *IKEPacketTunnelManager) updateReauthenticationState(auth ikev2.FullAuth
 }
 
 func (m *IKEPacketTunnelManager) transportConfigs(cfg TunnelConfig, epdg string) (IKETransportConfig, ESPTransportConfig) {
-	remotePort := m.Config.RemotePort
+	remotePort := tunnelAddressPort(epdg)
+	if remotePort == 0 {
+		remotePort = m.Config.RemotePort
+	}
 	if remotePort == 0 {
 		remotePort = 4500
 	}
@@ -551,6 +573,71 @@ func epdgAddressForTunnel(cfg TunnelConfig) string {
 	return fmt.Sprintf("epdg.epc.mnc%s.mcc%s.pub.3gppnetwork.org", leftPadTunnel(mnc, 3), mcc)
 }
 
+func (m *IKEPacketTunnelManager) resolveEPDGCandidates(ctx context.Context, epdg string) ([]string, error) {
+	epdg = strings.TrimSpace(epdg)
+	if epdg == "" {
+		return nil, fmt.Errorf("%w: ePDG address is empty", ErrInvalidTunnelConfig)
+	}
+	host := tunnelAddressHost(epdg)
+	if host == "" {
+		return []string{epdg}, nil
+	}
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return []string{withTunnelAddressPort(ip.String(), tunnelAddressPort(epdg))}, nil
+	}
+	if resolver := m.Config.EPDGCandidateResolver; resolver != nil {
+		candidates, err := resolver(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		return normalizeEPDGCandidates(candidates, epdg), nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return []string{epdg}, nil
+	}
+	candidates := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP == nil {
+			continue
+		}
+		candidates = append(candidates, addr.IP.String())
+	}
+	return normalizeEPDGCandidates(candidates, epdg), nil
+}
+
+func normalizeEPDGCandidates(candidates []string, fallback string) []string {
+	fallbackPort := tunnelAddressPort(fallback)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(candidates)+1)
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if ip := net.ParseIP(strings.Trim(candidate, "[]")); ip != nil {
+			candidate = ip.String()
+		}
+		candidate = withTunnelAddressPort(candidate, fallbackPort)
+		if seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		out = append(out, candidate)
+	}
+	fallback = strings.TrimSpace(fallback)
+	if fallback != "" && !seen[fallback] {
+		out = append(out, fallback)
+	}
+	if len(out) == 0 && fallback != "" {
+		out = append(out, fallback)
+	}
+	return out
+}
+
 func eapIdentityForTunnel(cfg TunnelConfig, override string) (string, error) {
 	raw := firstPacketNonEmpty(override, cfg.Identity.IMPI, cfg.IMSI, cfg.Identity.IMPU)
 	if raw == "" {
@@ -598,6 +685,29 @@ func tunnelMCCMNC(cfg TunnelConfig) (string, string) {
 
 func tunnelUDPAddr(addr string, port uint16) string {
 	addr = strings.TrimSpace(addr)
+	if _, _, err := net.SplitHostPort(addr); err == nil {
+		return addr
+	}
+	return net.JoinHostPort(strings.Trim(addr, "[]"), strconv.Itoa(int(port)))
+}
+
+func tunnelAddressPort(addr string) uint16 {
+	_, rawPort, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return 0
+	}
+	port, err := strconv.ParseUint(rawPort, 10, 16)
+	if err != nil || port == 0 {
+		return 0
+	}
+	return uint16(port)
+}
+
+func withTunnelAddressPort(addr string, port uint16) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" || port == 0 {
+		return addr
+	}
 	if _, _, err := net.SplitHostPort(addr); err == nil {
 		return addr
 	}

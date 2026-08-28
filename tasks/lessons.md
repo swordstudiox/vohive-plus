@@ -3,6 +3,7 @@
 ## 2026-08-03 WSL2 VoHive 路线
 
 - WSL2 中没有 Go/Node 且 sudo 需要密码时，不要改用户发行版系统包；优先使用项目内 `.toolchains` 放置便携 Go/Node 构建工具链。
+- 仓库内 `.toolchains` 里的 Go/Node 才算这条项目线的有效工具链；当前 shell 的 `PATH` 可能是空的，必须显式调用 `.toolchains/go/bin/go`、`.toolchains/go/bin/gofmt` 和 `.toolchains/node/bin/node`，不要拿系统环境是否装过来判断能不能构建。
 - `npm` 可能从 WSL interop 解析到 Windows 路径，但 Linux 构建需要 Linux 原生 `node`；构建命令必须显式设置 `.toolchains/node/bin` 到 `PATH` 前面。
 - `wsl.exe --exec` 启动的后台 shell/`nohup` 容易被会话生命周期和 PowerShell 参数转义影响；桌面壳启动 VoHive 时应直接 `Start-Process wsl.exe` 并传递 `--cd /opt/vohive --exec /opt/vohive/bin/vohive -c /opt/vohive/config/config.yaml`，由 Windows 侧持有进程句柄。
 - WSL 的 transient `systemd-run` unit 在当前调用方式下会随会话结束被回收，不适合作为桌面壳的默认启动方式；后续若要 systemd 常驻，应安装持久 unit 文件并明确 WSL 保活策略。
@@ -122,6 +123,8 @@
 - Release zip 版本、Tauri app version、Rust crate version、窗口标题、README 和 release notes 必须同步，避免同一个版本号对应不同内容，导致用户无法判断当前打开的是哪个软件。
 - Release workflow 戳 Rust `Cargo.toml` 版本号时不要用全局正则替换所有 `version =`；应只在 `[package]` 段内替换当前 crate 版本，避免误改 dependency、workspace 或其它表。
 - 当前 Linux 后端运行体没有 `--version` 参数；构建后验证版本注入应通过运行中的版本 API、Release 资产名、ldflags 记录或二进制字符串检查，不要把 `--version` 失败误判成编译失败。
+- 后端 `version = "Unknown"` 不是可展示的真实版本，前端必须把它和空值一起归一化到构建版本；只判断“有字符串就显示”会把兜底值错误暴露给用户。
+- 版本显示修复必须同时验证源码、构建产物和 WSL 运行体：源码改了不代表当前浏览器里看到的是新版本，`/api/system/info` 和 `/ping` 都要复核。
 
 ## 2026-08-06 WSL USB qmi_wwan 动态 ID
 
@@ -135,6 +138,7 @@
 - 自动学习来源要分层保存，不能把用户手动确认的号码伪装成 VoWiFi 或 modem 读取值；最终展示优先级应是 `manual > vowifi > modem`，清除手动号码后再回退到自动来源。
 - 手动本机号码必须绑定当前已确认的 IMSI/ICCID；eSIM 切卡身份未确认时应拒绝写入，避免把号码写到旧卡。
 - 从 PowerShell 调 WSL 构建时不要在 Bash 片段里依赖 `$(date ...)` 这类嵌套展开；本地构建版本信息可由 PowerShell 先生成 UTC 时间，再作为普通字符串传入 Go `-ldflags`，避免 `BuildTime` 被注入为空。
+- VoWiFi 启动失败后的网络恢复意图不能只读会被 UI/策略同步改写的 `NetworkEnabled`；要在断网前单独捕获恢复意图，并且后续准备步骤只能保留或增强这个意图，不能再把它覆盖回 `false`。
 
 ## 2026-08-06 Release notes 版本差异核对
 
@@ -146,3 +150,19 @@
 - MNC 是有长度语义的标识，`00`、`000`、`01`、`001` 都不能用普通整数或 `TrimLeft("0")` 处理；全零 MNC 不是空值。
 - VoWiFi ePDG 域名派生必须优先使用实时 SIM 归属 MCC/MNC；只有 MNC 完全缺失时才从 IMSI 回退推导，否则 `454/00` 这类二位 MNC 会被 IMSI 前三位误判成 `454/003`。
 - 遇到 SWU 连接 `127.0.0.1:4500` 超时时，先查日志里的 `epdg` 和 DNS 解析结果，不要只看 UDP 端口或本机监听状态。
+
+## 2026-08-27 部分 ISIM 与短信中心号
+
+- ISIM 只读到部分字段时，不应把“卡不完整”直接升级成启动失败；应优先和 profile 合并，缺失项交给后续注册层按 IMSI/域名规则补齐。
+- AT 模式发送短信时，`AT+CMGS` 依赖当前 SMSC 状态；如果模组里 `AT+CSCA` 没有被刷新，`CMS ERROR: 350` 往往更像中心号/承载状态问题，而不是 PDU 长度本身有错。
+- WSL 后端配置文件如果是 `600 root:root`，桌面壳和手工重启都必须按 `wsl.exe -u root ...` 启动；用普通用户起后端会直接因为读不到 `/opt/vohive/config/config.yaml` 而失败。
+- 发送短信前先读出当前 `AT+CSCA?` 再回写一遍 `AT+CSCA=...`，可以把“中心号未刷新”与真正的承载/资费问题分开，别把 `CMS ERROR: 350` 全都归到 PDU 编码上。
+
+## 2026-08-28 审查问题复核与长命令处理
+
+- 代码审查结论必须二次验证，不能把“建议”直接当事实；修复前要补能失败的回归测试，确认失败原因是目标行为而不是测试写错。
+- ePDG 地址带显式端口时，DNS/IP 候选重试必须保留端口；`host:port` 不能在 `LookupIPAddr` 或候选规范化后退化成默认 `4500`。
+- partial ISIM 要分清字段来源：读到 IMPI/IMPU 时可以优先 ISIM；只有 Domain 时，IMPI/IMPU 仍来自 profile，日志和 AKA 偏好不能标成完整 ISIM。
+- SMSC 刷新不能假设模块一定能从 `AT+CSCA?` 返回中心号；发送短信和 VoWiFi 启动画像都应支持配置兜底，且模块值优先于配置值。
+- 前端发布版本号不能在组件里硬编码；应从构建元数据注入，接口返回空值或 `Unknown` 时再归一化到构建版本。
+- 长时间无输出的验证命令必须提前设置合理超时并持续汇报；如果超过预期仍无输出，要明确中止或切换验证方式，不能让用户看起来像任务卡死。

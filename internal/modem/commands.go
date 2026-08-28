@@ -211,6 +211,16 @@ func (m *Manager) QuerySMSC() (string, error) {
 	return parseCSCA(resp), nil
 }
 
+// SetSMSC 写入短信中心号码 (AT+CSCA=...)。
+func (m *Manager) SetSMSC(smsc string) error {
+	cmd, err := buildCSCACommand(smsc)
+	if err != nil {
+		return err
+	}
+	_, err = m.ExecuteATHigh(cmd, 3*time.Second)
+	return err
+}
+
 // QueryMSISDN 查询本机号码 (AT+CNUM)
 func (m *Manager) QueryMSISDN() (string, error) {
 	resp, err := m.ExecuteATSilent("AT+CNUM", 2*time.Second)
@@ -221,6 +231,38 @@ func (m *Manager) QueryMSISDN() (string, error) {
 		return phone, nil
 	}
 	return m.queryMSISDNFromEF(), nil
+}
+
+func buildCSCACommand(smsc string) (string, error) {
+	smsc = strings.TrimSpace(smsc)
+	if smsc == "" {
+		return "", fmt.Errorf("SMSC 为空")
+	}
+	toa := 129
+	if strings.HasPrefix(smsc, "+") {
+		toa = 145
+		smsc = strings.TrimPrefix(smsc, "+")
+	}
+	smsc = strings.ReplaceAll(smsc, " ", "")
+	smsc = strings.ReplaceAll(smsc, "-", "")
+	smsc = strings.ReplaceAll(smsc, "(", "")
+	smsc = strings.ReplaceAll(smsc, ")", "")
+	if smsc == "" {
+		return "", fmt.Errorf("SMSC 为空")
+	}
+	for _, r := range smsc {
+		if r < '0' || r > '9' {
+			return "", fmt.Errorf("SMSC 包含非法字符: %q", smsc)
+		}
+	}
+	return fmt.Sprintf(`AT+CSCA="%s",%d`, smsc, toa), nil
+}
+
+func preferredSMSCForSend(queried, configured string) string {
+	if smsc := strings.TrimSpace(queried); smsc != "" {
+		return smsc
+	}
+	return strings.TrimSpace(configured)
 }
 
 // QueryUSBNetMode 查询 USBNET 模式

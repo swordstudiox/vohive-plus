@@ -1,7 +1,6 @@
 package device
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -38,8 +37,8 @@ func (m vowifiIdentityTestModem) GetISIMIdentity() (identity.Identity, error) {
 	}, nil
 }
 
-func TestVoWiFiMainStartupPrepareRejectsPartialISIMBeforeDataplaneDisconnect(t *testing.T) {
-	_, err := identity.PrepareStart(identity.PrepareStartInput{
+func TestVoWiFiMainStartupPrepareMergesPartialISIMIdentity(t *testing.T) {
+	prepared, err := identity.PrepareStart(identity.PrepareStartInput{
 		DeviceID: "wwan0",
 		Profile: identity.Profile{
 			IMSI: "310280233621715",
@@ -51,11 +50,17 @@ func TestVoWiFiMainStartupPrepareRejectsPartialISIMBeforeDataplaneDisconnect(t *
 			identity: identity.Identity{IMPI: "310280233621715@private.att.net"},
 		}),
 	})
-	if err == nil {
-		t.Fatal("PrepareStart() err=nil, want strict ISIM error")
+	if err != nil {
+		t.Fatalf("PrepareStart() err=%v, want partial ISIM fallback", err)
 	}
-	if !strings.Contains(err.Error(), "ISIM 身份不完整") {
-		t.Fatalf("err=%v, want incomplete ISIM identity", err)
+	if prepared.IMSIdentity.RequestedSource != identity.IMSIdentitySourceISIM || prepared.IMSIdentity.ActualSource != identity.IMSIdentitySourceISIM {
+		t.Fatalf("prepared identity=%+v, want ISIM source", prepared.IMSIdentity)
+	}
+	if prepared.IMSIdentity.AKAAppPreference != identity.AKAAppPreferenceISIM {
+		t.Fatalf("AKAAppPreference=%q, want %q", prepared.IMSIdentity.AKAAppPreference, identity.AKAAppPreferenceISIM)
+	}
+	if prepared.IMSIdentity.IMPI != "310280233621715@private.att.net" || prepared.IMSIdentity.IMPU != "sip:310280233621715@private.att.net" || prepared.IMSIdentity.Domain != "" {
+		t.Fatalf("prepared identity=%+v, want profile fallback merged with partial ISIM", prepared.IMSIdentity)
 	}
 }
 

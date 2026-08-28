@@ -159,6 +159,7 @@ type DeviceConfig struct {
 	OperatorSelectionMode string `mapstructure:"operator_selection_mode"`
 	OperatorSelectionPLMN string `mapstructure:"operator_selection_plmn"`
 	OperatorSelectionRAT  string `mapstructure:"operator_selection_rat"`
+	SMSC                  string `mapstructure:"smsc"` // 可选短信中心号兜底；模块查询为空/失败时使用
 
 	// Serial config
 	BaudRate int    `mapstructure:"baud_rate"`

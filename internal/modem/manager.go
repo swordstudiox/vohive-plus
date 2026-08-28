@@ -2025,6 +2025,7 @@ func (m *Manager) SendSMSWithOptions(phone, message string, opts smscodec.Submit
 	if _, err := m.ExecuteATHigh("AT+CMGF=0", 3*time.Second); err != nil {
 		return fmt.Errorf("设置 PDU 模式失败: %w", err)
 	}
+	m.refreshSMSCBeforeSMSSend()
 
 	// 构建 PDUs
 	pduHexList, tpduLenList, err := m.buildSMSPDUsWithOptions(phone, message, opts)
@@ -2074,6 +2075,37 @@ func (m *Manager) SendSMSWithOptions(phone, message string, opts smscodec.Submit
 
 	logger.Info(fmt.Sprintf("[%s] 短信已发送", m.cfg.ID))
 	return nil
+}
+
+func (m *Manager) refreshSMSCBeforeSMSSend() {
+	queried, err := m.QuerySMSC()
+	if err != nil {
+		smsc := preferredSMSCForSend("", m.cfg.SMSC)
+		if smsc == "" {
+			logger.Warn(fmt.Sprintf("[%s] 发送短信前读取 SMSC 失败且未配置兜底 SMSC，继续尝试发送", m.cfg.ID), "err", err)
+			return
+		}
+		if setErr := m.SetSMSC(smsc); setErr != nil {
+			logger.Warn(fmt.Sprintf("[%s] 发送短信前使用配置 SMSC 失败，继续尝试发送", m.cfg.ID), "smsc", smsc, "err", setErr)
+			return
+		}
+		logger.Debug(fmt.Sprintf("[%s] 发送短信前已使用配置 SMSC", m.cfg.ID), "smsc", smsc)
+		return
+	}
+	smsc := preferredSMSCForSend(queried, m.cfg.SMSC)
+	if smsc == "" {
+		logger.Warn(fmt.Sprintf("[%s] 发送短信前发现 SMSC 为空，AT PDU 发送可能失败", m.cfg.ID))
+		return
+	}
+	source := "device"
+	if strings.TrimSpace(queried) == "" {
+		source = "config"
+	}
+	if err := m.SetSMSC(smsc); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] 发送短信前刷新 SMSC 失败，继续尝试发送", m.cfg.ID), "smsc", smsc, "source", source, "err", err)
+		return
+	}
+	logger.Debug(fmt.Sprintf("[%s] 发送短信前已刷新 SMSC", m.cfg.ID), "smsc", smsc, "source", source)
 }
 
 // buildSMSPDUs 构建多段 SMS-SUBMIT PDU

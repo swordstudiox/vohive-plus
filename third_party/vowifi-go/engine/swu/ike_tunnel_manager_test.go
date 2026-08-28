@@ -23,6 +23,9 @@ func TestIKEPacketTunnelManagerEstablishesPacketSession(t *testing.T) {
 	manager := NewIKEPacketTunnelManager(IKEPacketTunnelManagerConfig{
 		SIM:    ikeTunnelAKAProvider{},
 		Random: bytes.NewReader(append([]byte{0xca, 0xfe, 0xba, 0xbe}, bytes.Repeat([]byte{0x55}, 64)...)),
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			return []string{host}, nil
+		},
 		IKETransportFactory: func(cfg TunnelConfig, transport IKETransportConfig) (ikev2.InitTransport, error) {
 			gotIKETransport = transport
 			return ikeTransport, nil
@@ -124,6 +127,9 @@ func TestIKEPacketTunnelManagerDerivesEPDGAndAKAIdentity(t *testing.T) {
 	manager := NewIKEPacketTunnelManager(IKEPacketTunnelManagerConfig{
 		SIM:      ikeTunnelAKAProvider{},
 		ChildSPI: []byte{0x11, 0x22, 0x33, 0x44},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			return []string{host}, nil
+		},
 		IKETransportFactory: func(cfg TunnelConfig, transport IKETransportConfig) (ikev2.InitTransport, error) {
 			gotIKETransport = transport
 			return ikeTunnelNoopTransport{}, nil
@@ -165,6 +171,118 @@ func TestIKEPacketTunnelManagerDerivesEPDGAndAKAIdentity(t *testing.T) {
 	}
 }
 
+func TestIKEPacketTunnelManagerRetriesEPDGCandidates(t *testing.T) {
+	var attempts []string
+	manager := NewIKEPacketTunnelManager(IKEPacketTunnelManagerConfig{
+		SIM:      ikeTunnelAKAProvider{},
+		ChildSPI: []byte{0x11, 0x22, 0x33, 0x44},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			if host != "epdg.example" {
+				t.Fatalf("resolver host=%q, want epdg.example", host)
+			}
+			return []string{"198.51.100.1", "198.51.100.2"}, nil
+		},
+		IKETransportFactory: func(cfg TunnelConfig, transport IKETransportConfig) (ikev2.InitTransport, error) {
+			attempts = append(attempts, transport.EPDGAddress)
+			return candidateIKETransport{remote: transport.EPDGAddress}, nil
+		},
+		ESPTransportFactory: func(cfg TunnelConfig, transport ESPTransportConfig) (ESPPacketTransport, error) {
+			return &captureESPPacketTransport{}, nil
+		},
+		InitRunner: func(ctx context.Context, cfg ikev2.InitConfig) (ikev2.InitResult, error) {
+			tr, ok := cfg.Transport.(candidateIKETransport)
+			if !ok {
+				t.Fatalf("init transport type=%T, want candidateIKETransport", cfg.Transport)
+			}
+			if tr.remote == "198.51.100.1" {
+				return ikev2.InitResult{}, errors.New("dial timeout")
+			}
+			if tr.remote != "198.51.100.2" {
+				t.Fatalf("init transport remote=%q, want second candidate", tr.remote)
+			}
+			return ikev2.InitResult{Keys: ikev2.IKEKeys{}}, nil
+		},
+		AuthRunner: func(ctx context.Context, cfg ikev2.FullAuthConfig) (ikev2.FullAuthResult, error) {
+			if len(attempts) != 2 {
+				t.Fatalf("auth attempted after %d transport attempts, want 2", len(attempts))
+			}
+			child := packetChildSA(true)
+			child.LocalSPI = append([]byte(nil), cfg.ChildSPI...)
+			return ikev2.FullAuthResult{ChildSA: &child, NextMessageID: 2}, nil
+		},
+	})
+
+	session, err := manager.EstablishTunnel(context.Background(), TunnelConfig{
+		DeviceID:    "dev-1",
+		Mode:        DataplaneModeUserspace,
+		EPDGAddress: "epdg.example",
+		IMSI:        "310280233641503",
+		MCC:         "310",
+		MNC:         "280",
+	})
+	if err != nil {
+		t.Fatalf("EstablishTunnel() error = %v", err)
+	}
+	defer session.Close(context.Background())
+
+	if got := attempts; len(got) != 2 || got[0] != "198.51.100.1" || got[1] != "198.51.100.2" {
+		t.Fatalf("attempts=%+v", got)
+	}
+	if got := session.Result().EPDGAddress; got != "epdg.example" {
+		t.Fatalf("result EPDG=%q, want epdg.example", got)
+	}
+}
+
+func TestIKEPacketTunnelManagerPreservesExplicitEPDGPortForCandidates(t *testing.T) {
+	var gotIKETransport IKETransportConfig
+	manager := NewIKEPacketTunnelManager(IKEPacketTunnelManagerConfig{
+		SIM:      ikeTunnelAKAProvider{},
+		ChildSPI: []byte{0x11, 0x22, 0x33, 0x44},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			if host != "epdg.example" {
+				t.Fatalf("resolver host=%q, want epdg.example", host)
+			}
+			return []string{"198.51.100.7"}, nil
+		},
+		IKETransportFactory: func(cfg TunnelConfig, transport IKETransportConfig) (ikev2.InitTransport, error) {
+			gotIKETransport = transport
+			return ikeTunnelNoopTransport{}, nil
+		},
+		ESPTransport: &captureESPPacketTransport{},
+		InitRunner: func(ctx context.Context, cfg ikev2.InitConfig) (ikev2.InitResult, error) {
+			if cfg.RemotePort != 4501 {
+				t.Fatalf("init remote port=%d, want 4501", cfg.RemotePort)
+			}
+			return ikev2.InitResult{}, nil
+		},
+		AuthRunner: func(ctx context.Context, cfg ikev2.FullAuthConfig) (ikev2.FullAuthResult, error) {
+			child := packetChildSA(true)
+			child.LocalSPI = append([]byte(nil), cfg.ChildSPI...)
+			return ikev2.FullAuthResult{ChildSA: &child, NextMessageID: 2}, nil
+		},
+	})
+
+	session, err := manager.EstablishTunnel(context.Background(), TunnelConfig{
+		DeviceID:    "dev-1",
+		Mode:        DataplaneModeUserspace,
+		EPDGAddress: "epdg.example:4501",
+		IMSI:        "310280233641503",
+		MCC:         "310",
+		MNC:         "280",
+	})
+	if err != nil {
+		t.Fatalf("EstablishTunnel() error = %v", err)
+	}
+	defer session.Close(context.Background())
+
+	if gotIKETransport.EPDGAddress != "198.51.100.7:4501" || gotIKETransport.RemoteAddr != "198.51.100.7:4501" {
+		t.Fatalf("IKE transport=%+v, want candidate to preserve explicit ePDG port", gotIKETransport)
+	}
+	if got := session.Result().EPDGAddress; got != "epdg.example:4501" {
+		t.Fatalf("result EPDG=%q, want original ePDG with port", got)
+	}
+}
+
 func TestIKEPacketTunnelManagerCarriesReauthenticationState(t *testing.T) {
 	initialKeys := eapaka.Keys{
 		MK:    bytes.Repeat([]byte{0x01}, 20),
@@ -183,6 +301,9 @@ func TestIKEPacketTunnelManagerCarriesReauthenticationState(t *testing.T) {
 		ChildSPI:     []byte{0x11, 0x22, 0x33, 0x44},
 		Transport:    ikeTunnelNoopTransport{},
 		ESPTransport: &captureESPPacketTransport{},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			return []string{host}, nil
+		},
 		Reauthentication: EAPReauthenticationState{
 			Identity:  "reauth-2",
 			Counter:   2,
@@ -256,6 +377,9 @@ func TestIKEPacketTunnelManagerIgnoresIncompleteReauthenticationState(t *testing
 		ChildSPI:     []byte{0x11, 0x22, 0x33, 0x44},
 		Transport:    ikeTunnelNoopTransport{},
 		ESPTransport: &captureESPPacketTransport{},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			return []string{host}, nil
+		},
 		Reauthentication: EAPReauthenticationState{
 			Counter:   9,
 			CounterOK: true,
@@ -321,6 +445,9 @@ func TestIKEPacketTunnelManagerResetsReauthenticationCounterAfterFullAuth(t *tes
 		ChildSPI:     []byte{0x11, 0x22, 0x33, 0x44},
 		Transport:    ikeTunnelNoopTransport{},
 		ESPTransport: &captureESPPacketTransport{},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			return []string{host}, nil
+		},
 		Reauthentication: EAPReauthenticationState{
 			Identity:            "old-reauth",
 			Counter:             9,
@@ -388,6 +515,9 @@ func TestIKEPacketTunnelManagerRejectsMissingChildSA(t *testing.T) {
 		ChildSPI:     []byte{0x11, 0x22, 0x33, 0x44},
 		Transport:    ikeTunnelNoopTransport{},
 		ESPTransport: &captureESPPacketTransport{},
+		EPDGCandidateResolver: func(ctx context.Context, host string) ([]string, error) {
+			return []string{host}, nil
+		},
 		InitRunner: func(ctx context.Context, cfg ikev2.InitConfig) (ikev2.InitResult, error) {
 			return ikev2.InitResult{}, nil
 		},
@@ -410,6 +540,14 @@ type ikeTunnelNoopTransport struct{}
 
 func (ikeTunnelNoopTransport) ExchangeIKE(context.Context, []byte) ([]byte, error) {
 	return nil, errors.New("unexpected IKE exchange")
+}
+
+type candidateIKETransport struct {
+	remote string
+}
+
+func (t candidateIKETransport) ExchangeIKE(context.Context, []byte) ([]byte, error) {
+	return nil, errors.New("candidate transport should not be used directly in test")
 }
 
 type ikeTunnelAKAProvider struct{}

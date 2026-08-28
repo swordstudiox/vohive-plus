@@ -75,7 +75,7 @@ winget install dorssel.usbipd-win
 ### 下载与启动
 
 1. 打开 [Releases](https://github.com/swordstudiox/vohive-plus/releases)。
-2. 下载 `vohive-plus-desktop_1.0.3_windows_x64.zip`。
+2. 下载 `vohive-plus-desktop_1.0.4_windows_x64.zip`。
 3. 解压到一个普通目录，例如 `D:\Apps\VoHivePlus`。
 4. 双击 `vohive-plus-desktop.exe`。
 5. 插入大疆 4G 模块。
@@ -107,10 +107,10 @@ Web 默认地址为 `http://127.0.0.1:7575/`，默认登录账号为 `admin/admi
 
 ## Release 产物
 
-- `vohive-plus-desktop_1.0.3_windows_x64.zip`：Windows x64 桌面便携包，内含桌面壳、Linux amd64 后端运行时、默认配置和 WSL USB 准备脚本。
-- `vohive-plus-firmware_1.0.3_linux_amd64`：Linux amd64 后端运行时，适用于 WSL2 或 Linux x86_64 主机。
-- `vohive-plus-firmware_1.0.3_linux_arm64`：Linux arm64 后端运行时。
-- `vohive-plus-firmware_1.0.3_linux_armv7`：Linux armv7 后端运行时。
+- `vohive-plus-desktop_1.0.4_windows_x64.zip`：Windows x64 桌面便携包，内含桌面壳、Linux amd64 后端运行时、默认配置和 WSL USB 准备脚本。
+- `vohive-plus-firmware_1.0.4_linux_amd64`：Linux amd64 后端运行时，适用于 WSL2 或 Linux x86_64 主机。
+- `vohive-plus-firmware_1.0.4_linux_arm64`：Linux arm64 后端运行时。
+- `vohive-plus-firmware_1.0.4_linux_armv7`：Linux armv7 后端运行时。
 - `*.sha256`：对应产物的 SHA256 校验文件。
 
 ## 开发者说明
@@ -137,7 +137,7 @@ cp -R web/dist internal/web/dist
 
 GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -buildvcs=false -tags "with_utls nomsgpack" \
-  -ldflags "-s -w -X 'github.com/swordstudiox/vohive-plus/internal/global.Version=1.0.3'" \
+  -ldflags "-s -w -X 'github.com/swordstudiox/vohive-plus/internal/global.Version=1.0.4'" \
   -o dist/vohive-open_linux_amd64 ./cmd/vohive
 ```
 
@@ -184,12 +184,12 @@ cargo test
 3. 创建 tag 并推送：
 
 ```bash
-git tag -a v1.0.3 -m "发布 v1.0.3"
+git tag -a v1.0.4 -m "发布 v1.0.4"
 git push origin main
-git push origin v1.0.3
+git push origin v1.0.4
 ```
 
-GitHub Actions 会构建后端多架构运行时、Windows 桌面便携包，并读取 `.github/release-notes/v1.0.3.md` 发布到 [vohive-plus/releases](https://github.com/swordstudiox/vohive-plus/releases)。
+GitHub Actions 会构建后端多架构运行时、Windows 桌面便携包，并读取 `.github/release-notes/v1.0.4.md` 发布到 [vohive-plus/releases](https://github.com/swordstudiox/vohive-plus/releases)。
 
 后续版本遵循语义化版本规则：
 

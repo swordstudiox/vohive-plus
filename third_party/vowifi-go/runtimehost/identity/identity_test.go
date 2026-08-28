@@ -76,7 +76,7 @@ func TestReadISIMIdentityReadsIMPIIMPUAndDomain(t *testing.T) {
 	}
 }
 
-func TestReadISIMIdentityReturnsPartialIdentityForStrictPrepare(t *testing.T) {
+func TestPrepareStartFallsBackAndMergesPartialISIMIdentity(t *testing.T) {
 	ft := &isimTransportFake{responses: []string{
 		"9000",
 		hexResponse(isimTLVString("310280233621715@private.att.net")),
@@ -91,12 +91,42 @@ func TestReadISIMIdentityReturnsPartialIdentityForStrictPrepare(t *testing.T) {
 		t.Fatalf("identity = %+v, want partial IMPI only", id)
 	}
 
-	_, err = PrepareStart(PrepareStartInput{
+	prepared, err := PrepareStart(PrepareStartInput{
 		Profile: Profile{IMSI: "310280233621715"},
 		Access:  partialAccess{id: id},
 	})
-	if err == nil || !strings.Contains(err.Error(), "ISIM 身份不完整") {
-		t.Fatalf("PrepareStart() err = %v, want incomplete ISIM error", err)
+	if err != nil {
+		t.Fatalf("PrepareStart() err = %v, want partial ISIM fallback", err)
+	}
+	if prepared.IMSIdentity.RequestedSource != IMSIdentitySourceISIM || prepared.IMSIdentity.ActualSource != IMSIdentitySourceISIM {
+		t.Fatalf("prepared identity = %+v, want ISIM source", prepared.IMSIdentity)
+	}
+	if prepared.IMSIdentity.AKAAppPreference != AKAAppPreferenceISIM {
+		t.Fatalf("AKAAppPreference = %q, want %q", prepared.IMSIdentity.AKAAppPreference, AKAAppPreferenceISIM)
+	}
+	if prepared.IMSIdentity.IMPI != "310280233621715@private.att.net" || prepared.IMSIdentity.IMPU != "sip:310280233621715@private.att.net" || prepared.IMSIdentity.Domain != "" {
+		t.Fatalf("prepared identity = %+v, want profile fallback merged with partial ISIM", prepared.IMSIdentity)
+	}
+}
+
+func TestPrepareStartFallsBackAndMergesDomainOnlyISIMIdentity(t *testing.T) {
+	prepared, err := PrepareStart(PrepareStartInput{
+		Profile: Profile{IMSI: "310280233621715"},
+		Access: partialAccess{
+			id: Identity{Domain: "one.att.net"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrepareStart() err = %v, want partial ISIM fallback", err)
+	}
+	if prepared.IMSIdentity.RequestedSource != IMSIdentitySourceISIM || prepared.IMSIdentity.ActualSource != IMSIdentitySourceProfile {
+		t.Fatalf("prepared identity = %+v, want ISIM requested with profile actual source", prepared.IMSIdentity)
+	}
+	if prepared.IMSIdentity.AKAAppPreference != AKAAppPreferenceUSIM {
+		t.Fatalf("AKAAppPreference = %q, want %q", prepared.IMSIdentity.AKAAppPreference, AKAAppPreferenceUSIM)
+	}
+	if prepared.IMSIdentity.IMPI != "310280233621715" || prepared.IMSIdentity.IMPU != "sip:310280233621715@one.att.net" || prepared.IMSIdentity.Domain != "one.att.net" {
+		t.Fatalf("prepared identity = %+v, want profile fallback merged with domain-only ISIM", prepared.IMSIdentity)
 	}
 }
 

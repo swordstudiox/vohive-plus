@@ -862,3 +862,74 @@
 - [x] 2026-08-06 已用 WSL root 备份旧后端为 `/opt/vohive/bin/vohive.bak-20260806103845`，并部署新后端到 `/opt/vohive/bin/vohive`。
 - [x] 2026-08-06 已停止旧进程并用隐藏 `wsl.exe` 启动新后端；`/ping` 返回 `pong`，新进程 PID 为 `8311`。
 - [x] 2026-08-06 已确认 `/opt/vohive/bin/vohive` 与本地 `dist/vohive-open_linux_amd64` 的 SHA256 均为 `bd55b5b760134023a710d70c17dc54e72ae8e1a2cb56d8eea35522e325bccad9`。
+
+## 阶段 6J：VoWiFi 部分 ISIM 回退与 AT SMSC 刷新
+
+- [x] `PrepareStart` 不再因 ISIM 只读到 `Domain` 或只读到部分字段就直接失败，改为与 profile 合并后继续启动。
+- [x] AT 短信发送前刷新 `AT+CSCA` 对应的 SMSC，减少 `AT+CMGS` 直接落 `CMS ERROR: 350` 的概率。
+- [x] 根因：VoWiFi 启动前的 `SetWorkerVoWiFiPolicy(true)` 会把 `NetworkEnabled` 同步成 `false`，而 `prepareVoWiFiStartContext` 又直接拿这个已被覆盖的值去写 `restoreNetworkAfterVoWiFi`，导致启动失败后恢复网络分支被跳过。
+- [x] 修复：启用 VoWiFi 前和启动准备阶段都先保留原始网络恢复意图，再断开数据连接；失败恢复不再被同一次配置同步覆盖。
+- [x] 已用仓库内 `.toolchains/go/bin/go` 在 WSL 跑过 `go test ./internal/device -run "TestSetWorkerVoWiFiPolicy|TestHandleVoWiFiStartupError|TestVoWiFiController|TestEnableVoWiFi|TestWorkerStartNetwork|TestDisableVoWiFi" -count=1`，通过；确认失败恢复链路和策略同步未回退。
+- [x] 已用仓库内 `.toolchains/go/bin/go` 在 WSL 跑过 `go test ./internal/device ./internal/modem ./third_party/vowifi-go/runtimehost/identity ./third_party/vowifi-go/engine/swu -count=1`，通过。
+- [x] 2026-08-27 已重新编译 Linux amd64 后端到 `dist/vohive-open_linux_amd64`，SHA256 为 `785410b4b284ba56228f1908356b9191251774f8eeb99b557ecab3e8a03f33d8`；已用 WSL root 覆盖 `/opt/vohive/bin/vohive`，并按桌面壳同样的 `wsl.exe -u root` 方式重启后端，`/ping` 返回 `pong`，新进程 PID 为 `8165`。
+
+## 阶段 6K：Web 品牌版本 Unknown 兜底修复
+
+### 根因调查
+
+- [x] 用户截图中的品牌标题显示 `VoHive vUnknown`，并非单纯“版本号没显示”，而是后端 / 前端把 `Unknown` 当成了有效版本字符串。
+- [x] 前端品牌区和设置页虽然已经接入构建版本兜底，但只处理空值和请求失败；若后端明确返回 `version = "Unknown"`，仍会原样展示。
+- [x] WSL 当前后端 `/api/system/info` 实际返回 `version=1.0.3`，说明这次需要修的是前端兜底规则和运行体重新部署后的验证闭环，而不是再猜版本注入失效。
+
+### 实施步骤
+
+- [x] 新增统一版本归一化工具：空串、空白和 `Unknown` 都回退到构建版本。
+- [x] 品牌区与系统设置页改用同一套版本显示逻辑。
+- [x] 补充运行级测试，锁定 `Unknown` 不再出现在品牌标题和设置页。
+- [x] 重新构建 Web 产物、同步 `internal/web/dist`，并重新编译 Linux amd64 后端。
+- [x] 备份旧 WSL 后端、覆盖 `/opt/vohive/bin/vohive`、按桌面壳同样方式重启并验证 `/ping` 与 `/api/system/info`。
+
+### 评审记录
+
+- 2026-08-27 阶段 6K 验证：`npm run test --prefix web` 29 项通过，`npm run typecheck --prefix web` 通过，`npm run build --prefix web` 通过；已用 WSL root 重新编译 Linux amd64 后端并同步到 `/opt/vohive/bin/vohive`，当前 `/api/system/info` 返回 `version=1.0.3`、`build_time=2026-08-27T09:48:06Z`，`/ping` 返回 `pong`。
+
+## 阶段 6L：代码审查问题复核与修复
+
+### 复核结论
+
+- [x] ePDG 多候选地址重试会丢弃显式端口是真问题；`epdg.example:4501` 会被候选 IP 路径退回默认 `4500`。
+- [x] domain-only ISIM 被标记为完整 ISIM 来源是真问题；只有 `Domain` 来自 ISIM 时，IMPI/IMPU 实际仍来自 profile 派生，不应误导日志和 AKA 优先级。
+- [x] SMSC 发送前刷新不完整是真问题；模块 `AT+CSCA?` 为空或失败时，原逻辑没有配置兜底，仍可能继续触发 `CMS ERROR: 350`。
+- [x] Web 版本显示硬编码 `1.0.3` 是维护风险；后续升级版本时容易出现源码兜底版本滞后。
+
+### 实施步骤
+
+- [x] RED：补充 ePDG 显式端口候选测试，先确认旧行为会把 `4501` 错退为 `4500`。
+- [x] RED：补充 domain-only ISIM 测试，先确认旧行为会把实际来源和 AKA 偏好误标为 ISIM。
+- [x] RED：补充 SMSC 配置兜底测试，先确认缺少 `preferredSMSCForSend` 和 worker 配置兜底。
+- [x] RED：补充 Web 源码检查，先确认组件内仍硬编码 `1.0.3`。
+- [x] GREEN：ePDG 候选地址保留原始显式端口；配置 `RemotePort` 仍作为无显式端口时的默认。
+- [x] GREEN：domain-only ISIM 改为 `RequestedSource=isim`、`ActualSource=profile`、`AKAAppPreference=usim`；读到 IMPI/IMPU 的 partial ISIM 仍保留 ISIM 优先。
+- [x] GREEN：`DeviceConfig` 增加可选 `smsc`，AT 发送和 VoWiFi 启动画像读取 SMSC 时使用“模块值优先、配置值兜底”。
+- [x] GREEN：前端版本兜底改为构建注入版本归一化，组件源码不再写死发布号。
+
+### 评审记录
+
+- 2026-08-28 阶段 6L 验证：先运行新增回归测试看到预期失败；修复后 `go test ./third_party/vowifi-go/engine/swu ./third_party/vowifi-go/runtimehost/identity ./internal/modem ./internal/device` 通过；`npm run test --prefix web -- tests/shellVersion.test.ts` 实际跑 29 项 Web 测试，全部通过；`npm run build --prefix web` 通过，耗时约 2 分 23 秒。
+- 2026-08-28 阶段 6L 注意：`npm run typecheck --prefix web` 本次运行数分钟未返回且无错误输出，已中止，不能计为通过；本阶段以 Web 单测和生产构建作为前端验证依据。
+
+## 阶段 6M：发布准备 VoHive Plus 1.0.4
+
+### 实施步骤
+
+- [x] 按语义化版本规则将维护修复版本从 `1.0.3` 提升到 `1.0.4`。
+- [x] 同步 README、Release workflow 默认版本、桌面 package、Tauri 配置、Rust crate/Cargo.lock 和仓库文档测试。
+- [x] 新增 `.github/release-notes/v1.0.4.md`，说明相对 `v1.0.3` 的 ePDG 端口、partial ISIM、SMSC 兜底和版本显示修复。
+- [x] 重新构建 Web，并同步 `web/dist` 到 `internal/web/dist` 供 Linux 后端嵌入。
+- [x] 重新编译 Linux amd64 后端 `dist/vohive-open_linux_amd64`，版本注入为 `1.0.4`。
+- [x] 同步 Linux 后端到桌面 Tauri 资源，并重新编译 Windows 桌面正式版 `desktop/src-tauri/target/release/vohive-plus-desktop.exe`。
+
+### 评审记录
+
+- 2026-08-28 阶段 6M 构建：Web build 通过；Linux amd64 后端大小约 49.6 MB，SHA256 为 `8EBE9703086B85873E30BE2DF2F289D443052D291CBE9ABF395C88EF0DB361CB`，二进制字符串确认包含 `1.0.4`；桌面 release exe 大小约 8.8 MB，SHA256 为 `7C701D6964BDC5336E8BACD120ED1396BD0A2DADABEB2B68A3A8F0952D34BB07`。
+- 2026-08-28 阶段 6M 验证：`go test ./third_party/vowifi-go/engine/swu ./third_party/vowifi-go/runtimehost/identity ./internal/modem ./internal/device ./internal/config` 通过；`npm run test --prefix web` 29 项通过；`node --test tests/*.test.mjs` 9 项通过；`desktop` 下 `node --test tests/*.test.mjs` 12 项通过；`pnpm tauri build` 通过并生成 release exe。

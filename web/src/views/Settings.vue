@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSettingsStore } from '../stores/settings'
 import PageHeader from '../components/PageHeader.vue'
 import FieldRow from '../components/FieldRow.vue'
+import { normalizeDisplayVersion } from '../utils/version'
 import { 
   Key24Regular, 
   Save24Regular,
@@ -14,6 +15,9 @@ import {
   Delete20Regular,
   DocumentText24Regular
 } from '@vicons/fluent'
+
+declare const __VOHIVE_APP_VERSION__: string
+const appVersion = normalizeDisplayVersion(typeof __VOHIVE_APP_VERSION__ === 'string' ? __VOHIVE_APP_VERSION__ : '', 'dev')
 
 const settingsStore = useSettingsStore()
 const { systemInfo, loadingNotifications, savingNotifications, testingWebhook, testingBark, testingEmail, changingPassword, passwordForm, telegramForm, feishuForm, qqForm, webhookSettings, barkSettings, emailForm, pushplusForm } = storeToRefs(settingsStore)
@@ -376,7 +380,7 @@ onBeforeUnmount(() => {
                   <el-button size="small" type="primary" class="!border-0" :loading="checkingUpdate" @click.stop="doCheckUpdate">
                     检查更新
                   </el-button>
-                  <span>{{ systemInfo.version || 'Unknown' }}</span>
+                  <span>{{ normalizeDisplayVersion(systemInfo.version, appVersion) }}</span>
                 </div>
               </FieldRow>
             </div>

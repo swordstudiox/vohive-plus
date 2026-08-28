@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import AutoImport from 'unplugin-auto-import/vite'
@@ -7,8 +8,12 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:7575'
+  const appVersion = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8')).version
 
   return {
+    define: {
+      __VOHIVE_APP_VERSION__: JSON.stringify(appVersion)
+    },
     plugins: [
       vue(),
       AutoImport({

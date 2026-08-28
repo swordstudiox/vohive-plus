@@ -30,6 +30,27 @@ func TestSetWorkerVoWiFiPolicySyncsConfig(t *testing.T) {
 	}
 }
 
+func TestSetWorkerVoWiFiPolicyPreservesNetworkRestoreIntent(t *testing.T) {
+	p, w := newPoolWithWorkerForSync("wwan0", config.DeviceConfig{NetworkEnabled: true})
+
+	p.SetWorkerVoWiFiPolicy("wwan0", true)
+
+	if !w.restoreNetworkAfterVoWiFi {
+		t.Fatal("开 VoWiFi 前原本允许蜂窝数据，启动失败后应恢复网络")
+	}
+}
+
+func TestSetWorkerVoWiFiPolicyPreservesConnectedDataRestoreIntent(t *testing.T) {
+	p, w := newPoolWithWorkerForSync("wwan0", config.DeviceConfig{NetworkEnabled: false})
+	w.netOverride = &fakeController{connected: true}
+
+	p.SetWorkerVoWiFiPolicy("wwan0", true)
+
+	if !w.restoreNetworkAfterVoWiFi {
+		t.Fatal("开 VoWiFi 前数据面实际已连接，启动失败后应恢复网络")
+	}
+}
+
 // 开飞行：同步 airplane=T、vowifi=F、network=F；关飞行仅清 airplane。
 func TestSetWorkerAirplanePolicySyncsConfig(t *testing.T) {
 	p, w := newPoolWithWorkerForSync("wwan0", config.DeviceConfig{VoWiFiEnabled: true, NetworkEnabled: true})

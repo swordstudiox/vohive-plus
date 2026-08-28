@@ -1902,10 +1902,24 @@ func (p *Pool) SetWorkerVoWiFiPolicy(deviceID string, vowifiEnabled bool) *Worke
 	}
 	w.Config.VoWiFiEnabled = vowifiEnabled
 	if vowifiEnabled {
+		w.rememberVoWiFiNetworkRestoreIntent()
 		w.Config.AirplaneEnabled = true
 		w.Config.NetworkEnabled = false
 	}
 	return w
+}
+
+func (w *Worker) rememberVoWiFiNetworkRestoreIntent() {
+	if w == nil {
+		return
+	}
+	restore := w.Config.NetworkEnabled
+	if nc := w.NetworkController(); nc != nil && nc.IsConnected() {
+		restore = true
+	}
+	if restore {
+		w.restoreNetworkAfterVoWiFi = true
+	}
 }
 
 // SetWorkerAirplanePolicy 同步 worker 运行时的飞行(airplane)策略字段。

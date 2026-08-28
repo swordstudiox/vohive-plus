@@ -309,10 +309,18 @@ func (w *Worker) getSMSCWithContext(ctx context.Context) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("worker 为空")
 	}
+	configured := strings.TrimSpace(w.Config.SMSC)
 	if w.Backend != nil {
 		if provider, ok := w.Backend.(backend.SMSCProvider); ok {
 			v, err := provider.GetSMSC(ctx)
-			return strings.TrimSpace(v), err
+			v = strings.TrimSpace(v)
+			if v != "" || configured == "" {
+				return v, err
+			}
+			return configured, nil
+		}
+		if configured != "" {
+			return configured, nil
 		}
 		if w.Backend.Mode() != backend.BackendAT {
 			return "", fmt.Errorf("backend=%s 未实现 SMSCProvider", w.Backend.Mode())
@@ -320,9 +328,13 @@ func (w *Worker) getSMSCWithContext(ctx context.Context) (string, error) {
 	}
 	if w.Modem != nil {
 		v, err := w.Modem.QuerySMSC()
-		return strings.TrimSpace(v), err
+		v = strings.TrimSpace(v)
+		if v != "" || configured == "" {
+			return v, err
+		}
+		return configured, nil
 	}
-	return "", nil
+	return configured, nil
 }
 
 func (w *Worker) getPhoneNumberWithContext(ctx context.Context) string {

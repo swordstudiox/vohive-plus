@@ -8,6 +8,7 @@ import ErrorBoundary from '../components/ErrorBoundary.vue'
 import SwitchDark from '../components/SwitchDark.vue'
 import { systemService } from '../services/system'
 import { debugCollector } from '../debug/collector'
+import { normalizeDisplayVersion } from '../utils/version'
 import {
   Mail24Regular,
   Settings24Regular,
@@ -34,8 +35,10 @@ const collapsed = ref(false)
 const isMobile = ref(false)
 const drawerOpen = ref(false)
 const debugOpen = ref(false)
-const backendVersion = ref('...')
 const DebugPanel = defineAsyncComponent(() => import('../components/DebugPanel.vue'))
+declare const __VOHIVE_APP_VERSION__: string
+const appVersion = normalizeDisplayVersion(typeof __VOHIVE_APP_VERSION__ === 'string' ? __VOHIVE_APP_VERSION__ : '', 'dev')
+const backendVersion = ref(appVersion)
 
 const menuItems = [
   { index: '/', label: '仪表盘', icon: Board24Regular },
@@ -88,12 +91,12 @@ async function loadBackendVersion() {
   try {
     const info = await systemService.getInfo()
     if (info.ok) {
-      backendVersion.value = info.data.version || 'Unknown'
+      backendVersion.value = normalizeDisplayVersion(info.data.version, appVersion)
     } else {
-      backendVersion.value = 'Unknown'
+      backendVersion.value = appVersion
     }
   } catch {
-    backendVersion.value = 'Unknown'
+    backendVersion.value = appVersion
   }
 }
 

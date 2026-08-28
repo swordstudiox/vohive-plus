@@ -112,19 +112,38 @@ func PrepareStart(in PrepareStartInput) (PreparedSession, error) {
 	}
 	if in.Access != nil {
 		id, err := in.Access.GetISIMIdentity()
-		if err == nil && (strings.TrimSpace(id.IMPI) != "" || len(id.IMPU) > 0 || strings.TrimSpace(id.Domain) != "") {
-			if strings.TrimSpace(id.IMPI) == "" || len(id.IMPU) == 0 || strings.TrimSpace(id.Domain) == "" {
-				return PreparedSession{}, fmt.Errorf("ISIM 身份不完整: impi=%t impu=%d domain=%t",
-					strings.TrimSpace(id.IMPI) != "", len(id.IMPU), strings.TrimSpace(id.Domain) != "")
-			}
-			prepared.IMSIdentity = IMSIdentityResolution{
-				RequestedSource:  IMSIdentitySourceISIM,
-				ActualSource:     IMSIdentitySourceISIM,
-				AKAAppPreference: AKAAppPreferenceISIMStrict,
-				Applied:          true,
-				IMPI:             strings.TrimSpace(id.IMPI),
-				IMPU:             strings.TrimSpace(id.IMPU[0]),
-				Domain:           strings.TrimSpace(id.Domain),
+		if err == nil {
+			impi := strings.TrimSpace(id.IMPI)
+			domain := strings.TrimSpace(id.Domain)
+			impu := firstNonEmptyString(id.IMPU)
+			hasIMPI := impi != ""
+			hasIMPU := impu != ""
+			hasDomain := domain != ""
+			if hasIMPI || hasIMPU || hasDomain {
+				actualSource := IMSIdentitySourceISIM
+				akaPreference := AKAAppPreferenceISIM
+				if !hasIMPI && !hasIMPU {
+					actualSource = IMSIdentitySourceProfile
+					akaPreference = AKAAppPreferenceUSIM
+				}
+				if impi == "" {
+					impi = prepared.IMSIdentity.IMPI
+				}
+				if impu == "" {
+					impu = deriveIMPU(impi, domain)
+				}
+				prepared.IMSIdentity = IMSIdentityResolution{
+					RequestedSource:  IMSIdentitySourceISIM,
+					ActualSource:     actualSource,
+					AKAAppPreference: akaPreference,
+					Applied:          true,
+					IMPI:             impi,
+					IMPU:             impu,
+					Domain:           domain,
+				}
+				if hasIMPI && hasIMPU && hasDomain {
+					prepared.IMSIdentity.AKAAppPreference = AKAAppPreferenceISIMStrict
+				}
 			}
 		}
 	}
@@ -144,6 +163,33 @@ func leftPad(s string, n int) string {
 		s = "0" + s
 	}
 	return s
+}
+
+func firstNonEmptyString(values []string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func deriveIMPU(impi, domain string) string {
+	impi = strings.TrimSpace(impi)
+	domain = strings.TrimSpace(domain)
+	if impi == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(impi), "sip:") || strings.HasPrefix(strings.ToLower(impi), "tel:") {
+		return impi
+	}
+	if strings.Contains(impi, "@") {
+		return "sip:" + impi
+	}
+	if domain != "" {
+		return "sip:" + impi + "@" + domain
+	}
+	return "sip:" + impi
 }
 
 func ReadISIMIdentity(access interface {

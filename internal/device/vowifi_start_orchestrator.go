@@ -232,7 +232,7 @@ func (p *Pool) prepareVoWiFiStartContext(deviceID, traceID, runtimeEPDGOverride 
 		"applied", prepared.IMSIdentity.Applied)
 
 	if nc := w.NetworkController(); nc != nil {
-		w.restoreNetworkAfterVoWiFi = w.Config.NetworkEnabled
+		w.rememberVoWiFiNetworkRestoreIntent()
 		logger.Info("VoWiFi 启用中，停止网络功能", "trace_id", traceID, "device", deviceID)
 		if err := nc.Disconnect(); err != nil {
 			logger.Warn("断开数据连接失败，继续启动 VoWiFi", "trace_id", traceID, "device", deviceID, "err", err)
