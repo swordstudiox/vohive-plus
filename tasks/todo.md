@@ -933,3 +933,24 @@
 
 - 2026-08-28 阶段 6M 构建：Web build 通过；Linux amd64 后端大小约 49.6 MB，SHA256 为 `8EBE9703086B85873E30BE2DF2F289D443052D291CBE9ABF395C88EF0DB361CB`，二进制字符串确认包含 `1.0.4`；桌面 release exe 大小约 8.8 MB，SHA256 为 `7C701D6964BDC5336E8BACD120ED1396BD0A2DADABEB2B68A3A8F0952D34BB07`。
 - 2026-08-28 阶段 6M 验证：`go test ./third_party/vowifi-go/engine/swu ./third_party/vowifi-go/runtimehost/identity ./internal/modem ./internal/device ./internal/config` 通过；`npm run test --prefix web` 29 项通过；`node --test tests/*.test.mjs` 9 项通过；`desktop` 下 `node --test tests/*.test.mjs` 12 项通过；`pnpm tauri build` 通过并生成 release exe。
+
+## 阶段 6N：Release 改为 main 推送触发
+
+### 根因调查
+
+- [x] GitHub Release 页面仍停在 `1.0.3`，因为此前只推送了 `main`，而 Release workflow 只监听 `v*` tag 和手动触发。
+- [x] 工作流里的 `release` job 条件也只允许 tag/manual，即使后续补 `push.branches: main`，发布 job 仍会被跳过。
+- [x] 旧 README 仍写“创建 tag 并推送”才发布，与用户期望的 `git push origin main` 触发发布不一致。
+
+### 实施步骤
+
+- [x] Release workflow 增加 `push.branches: main`。
+- [x] `vars` job 增加 checkout；main 推送时从 `desktop/package.json` 读取版本号生成 `vX.Y.Z` release tag。
+- [x] `release` job 条件允许 `refs/heads/main`。
+- [x] 更新 README 发布流程为“推送 main 即发布”，并保留手动 workflow/tag 作为重发历史版本路径。
+- [x] 补充仓库测试锁定 main 推送发布和版本来源。
+
+### 评审记录
+
+- [x] 2026-08-28 阶段 6N 验证：`node --test desktop/tests/releaseWorkflow.test.mjs` 4 项通过；`node --test tests/repositoryDocs.test.mjs` 6 项通过。
+- [x] 2026-08-28 阶段 6N 提交准备：workflow、README、测试和教训记录已纳入待提交范围；推送 `main` 后会触发远程 Release workflow。

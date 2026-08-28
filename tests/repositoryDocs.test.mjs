@@ -89,7 +89,9 @@ test('repository documents the current 1.0.4 release', () => {
   assert.match(releaseNotes, /ePDG/)
   assert.match(releaseNotes, /SMSC/)
   assert.match(releaseWorkflow, /default: '1\.0\.4'/)
-  assert.match(releaseWorkflow, /github\.event\.inputs\.version \|\| '1\.0\.4'/)
+  assert.match(releaseWorkflow, /branches:\s*\n\s*-\s*main/)
+  assert.match(releaseWorkflow, /desktop\/package\.json/)
+  assert.match(releaseWorkflow, /RAW_VERSION="1\.0\.4"/)
 })
 
 test('OpenAPI documents manual local phone endpoint', () => {

@@ -2,6 +2,8 @@ name: Build Release Artifacts
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -32,14 +34,22 @@ jobs:
       buildtime: ${{ steps.vars.outputs.buildtime }}
       enable_upx: ${{ steps.vars.outputs.enable_upx }}
     steps:
+      - name: Checkout version metadata
+        uses: actions/checkout@v4
+
       - name: Normalize version
         id: vars
         shell: bash
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             RAW_VERSION="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            RAW_VERSION="${{ github.event.inputs.version }}"
           else
-            RAW_VERSION="${{ github.event.inputs.version || '1.0.4' }}"
+            RAW_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' desktop/package.json | head -n 1)"
+          fi
+          if [[ -z "${RAW_VERSION}" ]]; then
+            RAW_VERSION="1.0.4"
           fi
           VERSION="${RAW_VERSION#v}"
           TAG="v${VERSION}"
@@ -309,7 +319,7 @@ jobs:
       - vars
       - backend
       - desktop-windows
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v4

@@ -166,3 +166,9 @@
 - SMSC 刷新不能假设模块一定能从 `AT+CSCA?` 返回中心号；发送短信和 VoWiFi 启动画像都应支持配置兜底，且模块值优先于配置值。
 - 前端发布版本号不能在组件里硬编码；应从构建元数据注入，接口返回空值或 `Unknown` 时再归一化到构建版本。
 - 长时间无输出的验证命令必须提前设置合理超时并持续汇报；如果超过预期仍无输出，要明确中止或切换验证方式，不能让用户看起来像任务卡死。
+
+## 2026-08-28 Release 触发规则
+
+- 用户要求“推送 `main` 即发布”时，不能只更新版本号并 `git push origin main`；Release workflow 必须显式监听 `push.branches: main`，并且发布 job 条件也要允许 `refs/heads/main`。
+- `main` 推送触发发布时，版本号应从仓库版本元数据读取，例如 `desktop/package.json`，不要只依赖 workflow_dispatch 的输入默认值或手工 tag 名。
+- 发布流程文档必须和 CI 行为一致；如果 README 仍写“创建 tag 并推送”才发布，用户会看到 Actions 成功但 Release 停在旧版本。

@@ -16,10 +16,18 @@ test('release workflow builds portable desktop zip with runtime resources', () =
 })
 
 test('release workflow publishes versioned release notes and Linux runtime assets', () => {
+  assert.match(workflow, /branches:\s*\n\s*-\s*main/)
   assert.match(workflow, /\.github\/release-notes\/\$\{\{\s*needs\.vars\.outputs\.tag\s*\}\}\.md/)
   assert.match(workflow, /softprops\/action-gh-release@v2/)
   assert.match(workflow, /vohive-plus-firmware_\$\{\{\s*needs\.vars\.outputs\.version\s*\}\}_linux_/)
+  assert.match(workflow, /github\.ref\s*==\s*'refs\/heads\/main'/)
   assert.ok(!workflow.includes('nsis'))
+})
+
+test('release workflow derives main branch release version from desktop package metadata', () => {
+  assert.match(workflow, /Checkout version metadata/)
+  assert.match(workflow, /desktop\/package\.json/)
+  assert.match(workflow, /RAW_VERSION="\$\(sed -n/)
 })
 
 test('release workflow stamps desktop app metadata with release version', () => {

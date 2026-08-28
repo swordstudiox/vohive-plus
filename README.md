@@ -181,15 +181,13 @@ cargo test
 
 1. 更新版本号和 `.github/release-notes/vX.Y.Z.md`。
 2. 提交变更。
-3. 创建 tag 并推送：
+3. 推送 `main`：
 
 ```bash
-git tag -a v1.0.4 -m "发布 v1.0.4"
 git push origin main
-git push origin v1.0.4
 ```
 
-GitHub Actions 会构建后端多架构运行时、Windows 桌面便携包，并读取 `.github/release-notes/v1.0.4.md` 发布到 [vohive-plus/releases](https://github.com/swordstudiox/vohive-plus/releases)。
+GitHub Actions 会在 `main` 推送后读取 `desktop/package.json` 中的版本号，构建后端多架构运行时、Windows 桌面便携包，并读取 `.github/release-notes/v1.0.4.md` 发布到 [vohive-plus/releases](https://github.com/swordstudiox/vohive-plus/releases)。如果需要重发历史版本，也可以手动运行 Release workflow 或推送 `vX.Y.Z` tag。
 
 后续版本遵循语义化版本规则：
 
