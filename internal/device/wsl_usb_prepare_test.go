@@ -73,6 +73,95 @@ func TestPrepareWSLUSBPreparesBaiwangQMIInterface(t *testing.T) {
 	}
 }
 
+func TestPrepareWSLUSBPreparesOriginalQuectelEC25QMIInterface(t *testing.T) {
+	root := t.TempDir()
+	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")
+	usbDrivers := filepath.Join(root, "sys", "bus", "usb", "drivers")
+	serialDrivers := filepath.Join(root, "sys", "bus", "usb-serial", "drivers")
+	devRoot := filepath.Join(root, "dev")
+
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idVendor"), "2c7c\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idProduct"), "0125\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.2", "tty", "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "driver"), "option\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "usbmisc", "cdc-wdm0"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "net", "wwan0"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "option", "unbind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "new_id"), "")
+	writeUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"), "")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "cdc-wdm0"), "")
+
+	got, err := PrepareWSLUSB(context.Background(), WSLUSBPrepareOptions{
+		USBDevicesPath:       usbDevices,
+		USBDriversPath:       usbDrivers,
+		USBSerialDriversPath: serialDrivers,
+		DevPath:              devRoot,
+		WaitTimeout:          time.Millisecond,
+		PollInterval:         time.Millisecond,
+		Modprobe:             func(context.Context, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("PrepareWSLUSB() error = %v", err)
+	}
+	if !got.SupportedDeviceFound || !got.Prepared {
+		t.Fatalf("SupportedDeviceFound=%v Prepared=%v, want true true (%+v)", got.SupportedDeviceFound, got.Prepared, got)
+	}
+	if got.Devices[0].VendorID != "2c7c" || got.Devices[0].ProductID != "0125" {
+		t.Fatalf("unexpected device IDs: %+v", got.Devices[0])
+	}
+	if strings.TrimSpace(readUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"))) != "2c7c 0125" {
+		t.Fatalf("option new_id not written for original EC25")
+	}
+	if strings.TrimSpace(readUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "new_id"))) != "2c7c 0125" {
+		t.Fatalf("qmi_wwan new_id not written for original EC25")
+	}
+}
+
+func TestPrepareWSLUSBPreparesOtherQuectelQMIInterface(t *testing.T) {
+	root := t.TempDir()
+	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")
+	usbDrivers := filepath.Join(root, "sys", "bus", "usb", "drivers")
+	serialDrivers := filepath.Join(root, "sys", "bus", "usb-serial", "drivers")
+	devRoot := filepath.Join(root, "dev")
+
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idVendor"), "2c7c\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "idProduct"), "6002\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.2", "tty", "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "driver"), "option\n")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "usbmisc", "cdc-wdm0"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDevices, "1-1", "1-1:1.4", "net", "wwan0"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "option", "unbind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "bind"), "")
+	writeUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "new_id"), "")
+	writeUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"), "")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "ttyUSB2"), "")
+	writeUSBPrepareFile(t, filepath.Join(devRoot, "cdc-wdm0"), "")
+
+	got, err := PrepareWSLUSB(context.Background(), WSLUSBPrepareOptions{
+		USBDevicesPath:       usbDevices,
+		USBDriversPath:       usbDrivers,
+		USBSerialDriversPath: serialDrivers,
+		DevPath:              devRoot,
+		WaitTimeout:          time.Millisecond,
+		PollInterval:         time.Millisecond,
+		Modprobe:             func(context.Context, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("PrepareWSLUSB() error = %v", err)
+	}
+	if !got.SupportedDeviceFound || !got.Prepared {
+		t.Fatalf("SupportedDeviceFound=%v Prepared=%v, want true true (%+v)", got.SupportedDeviceFound, got.Prepared, got)
+	}
+	if strings.TrimSpace(readUSBPrepareFile(t, filepath.Join(serialDrivers, "option1", "new_id"))) != "2c7c 6002" {
+		t.Fatalf("option new_id not written for Quectel family device")
+	}
+	if strings.TrimSpace(readUSBPrepareFile(t, filepath.Join(usbDrivers, "qmi_wwan", "new_id"))) != "2c7c 6002" {
+		t.Fatalf("qmi_wwan new_id not written for Quectel family device")
+	}
+}
+
 func TestPrepareWSLUSBIsIdempotentWhenAlreadyPrepared(t *testing.T) {
 	root := t.TempDir()
 	usbDevices := filepath.Join(root, "sys", "bus", "usb", "devices")

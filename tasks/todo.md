@@ -954,3 +954,28 @@
 
 - [x] 2026-08-28 阶段 6N 验证：`node --test desktop/tests/releaseWorkflow.test.mjs` 4 项通过；`node --test tests/repositoryDocs.test.mjs` 6 项通过。
 - [x] 2026-08-28 阶段 6N 提交准备：workflow、README、测试和教训记录已纳入待提交范围；推送 `main` 后会触发远程 Release workflow。
+
+## 阶段 6O：WSL prepare-usb 支持 Quectel 原厂族 ID
+
+### 根因调查
+
+- [x] 用户截图指出 `prepare-usb` 只识别 `2ca3:4006`，实际插入设备是 Quectel EC25 原厂 ID `2c7c:0125`。
+- [x] 后端 WSL prepare-usb 入口只匹配 Baiwang `2ca3:4006`，导致 WSL 内即使已 attach 原厂 EC25，也直接返回未发现模组。
+- [x] 桌面壳 `usbipd list` 目标识别也只认 `2ca3:4006` 或名称包含 Baiwang，原厂 Quectel 设备不会作为目标 USB。
+- [x] 项目已有核心设备发现逻辑按 Quectel 厂商 ID `2c7c` 处理多 PID，因此 prepare-usb 和桌面壳不应只新增 `2c7c:0125` 单点。
+
+### 实施步骤
+
+- [x] RED：补充后端 `2c7c:0125` 和 `2c7c:6002` prepare-usb 测试，确认旧逻辑漏识别。
+- [x] RED：补充桌面 `usbipd list` 对 `2c7c:0125` 和 `2c7c:6002` 的目标识别测试。
+- [x] RED：补充 Web 添加设备默认后端对 `2c7c:6002` 的测试。
+- [x] GREEN：后端保留 `2ca3:4006` 精确匹配，并把 `2c7c:*` 作为 Quectel 模组族支持；写 sysfs new_id 时使用实际 VID/PID。
+- [x] GREEN：桌面壳把 `2c7c:*` 和名称包含 Quectel 的设备识别为目标 USB。
+- [x] GREEN：Web 默认后端判断、桌面文案、OpenAPI 和发布说明同步改为 `2c7c:*`。
+
+### 评审记录
+
+- [x] 2026-08-28 阶段 6O 验证：新增回归测试先确认 `2c7c:0125` 与 `2c7c:6002` 在后端 prepare-usb、桌面 usbipd 识别和 Web 默认后端判断中会失败；修复后目标测试全部转绿。
+- [x] 2026-08-28 阶段 6O 验证：`go test ./internal/device ./internal/api -count=1` 通过；`cargo test --manifest-path desktop/src-tauri/Cargo.toml` 28 项通过；`npm run test --prefix web` 31 项通过；`node --test tests/*.test.mjs desktop/tests/*.test.mjs` 22 项通过。
+- [x] 2026-08-28 阶段 6O 构建：`npm run build --prefix web` 通过，已同步 `web/dist` 到 `internal/web/dist`；Linux amd64 后端 `dist/vohive-open_linux_amd64` SHA256 为 `319D6A60F55F23EBBEFCDB0849DEFAECC33E0C1EA2B3EE7613F9EFCC51B978B6`；桌面 release exe SHA256 为 `232518B9843419062E0C3C11CC25F0B56296C9C0B52FFBD7BC73A8516E9FD075`。
+- [x] 2026-08-28 阶段 6O 提交准备：按语义化版本规则升级到 `1.0.5`，源码、测试、文档、发布说明和本地构建验证已准备完成；推送 `main` 后由 Release workflow 发布。

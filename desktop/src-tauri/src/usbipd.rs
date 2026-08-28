@@ -77,8 +77,7 @@ pub fn parse_usbipd_list(output: &str) -> Vec<UsbDevice> {
             .map(|(_, r)| r.trim())
             .unwrap_or_default();
         let (device, state) = split_device_state(rest);
-        let is_target = vid_pid.eq_ignore_ascii_case("2ca3:4006")
-            || device.to_ascii_lowercase().contains("baiwang");
+        let is_target = is_supported_modem(vid_pid, &device);
         out.push(UsbDevice {
             busid: busid.to_string(),
             vid_pid: vid_pid.to_string(),
@@ -88,6 +87,15 @@ pub fn parse_usbipd_list(output: &str) -> Vec<UsbDevice> {
         });
     }
     out
+}
+
+fn is_supported_modem(vid_pid: &str, device: &str) -> bool {
+    let vid_pid = vid_pid.to_ascii_lowercase();
+    let device = device.to_ascii_lowercase();
+    vid_pid == "2ca3:4006"
+        || vid_pid.starts_with("2c7c:")
+        || device.contains("baiwang")
+        || device.contains("quectel")
 }
 
 fn split_device_state(rest: &str) -> (String, String) {
@@ -121,5 +129,36 @@ GUID                                  DEVICE
         assert_eq!(devices[0].state, "Attached");
         assert!(devices[0].is_target);
         assert_eq!(devices[1].state, "Not shared");
+    }
+
+    #[test]
+    fn parse_original_quectel_ec25_as_target_device() {
+        let sample = r#"
+Connected:
+BUSID  VID:PID    DEVICE                                                        STATE
+2-4    2c7c:0125  Quectel EC25                                                  Shared
+
+Persisted:
+GUID                                  DEVICE
+"#;
+        let devices = parse_usbipd_list(sample);
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].busid, "2-4");
+        assert!(devices[0].is_target);
+    }
+
+    #[test]
+    fn parse_quectel_family_device_as_target_device() {
+        let sample = r#"
+Connected:
+BUSID  VID:PID    DEVICE                                                        STATE
+2-4    2c7c:6002  Quectel RM520N                                                Shared
+
+Persisted:
+GUID                                  DEVICE
+"#;
+        let devices = parse_usbipd_list(sample);
+        assert_eq!(devices.len(), 1);
+        assert!(devices[0].is_target);
     }
 }

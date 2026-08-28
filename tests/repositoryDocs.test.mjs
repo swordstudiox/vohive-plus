@@ -76,22 +76,22 @@ test('README documents desktop runtime prerequisites and manual system dependenc
   assert.match(readme, /无需安装 Go、Node、Rust、pnpm、Docker 或 VirtualBox/)
 })
 
-test('repository documents the current 1.0.4 release', () => {
+test('repository documents the current 1.0.5 release', () => {
   const readme = readRepoFile('README.md')
-  const releaseNotes = readRepoFile('.github/release-notes/v1.0.4.md')
+  const releaseNotes = readRepoFile('.github/release-notes/v1.0.5.md')
   const releaseWorkflow = readRepoFile('.github/workflows/binary-release.yml')
 
-  assert.match(readme, /vohive-plus-desktop_1\.0\.4_windows_x64\.zip/)
-  assert.match(readme, /vohive-plus-firmware_1\.0\.4_linux_amd64/)
-  assert.match(readme, /\.github\/release-notes\/v1\.0\.4\.md/)
-  assert.match(releaseNotes, /^# VoHive Plus 1\.0\.4/m)
-  assert.match(releaseNotes, /相对 `v1\.0\.3`/)
-  assert.match(releaseNotes, /ePDG/)
-  assert.match(releaseNotes, /SMSC/)
-  assert.match(releaseWorkflow, /default: '1\.0\.4'/)
+  assert.match(readme, /vohive-plus-desktop_1\.0\.5_windows_x64\.zip/)
+  assert.match(readme, /vohive-plus-firmware_1\.0\.5_linux_amd64/)
+  assert.match(readme, /\.github\/release-notes\/v1\.0\.5\.md/)
+  assert.match(releaseNotes, /^# VoHive Plus 1\.0\.5/m)
+  assert.match(releaseNotes, /相对 `v1\.0\.4`/)
+  assert.match(releaseNotes, /2c7c:0125/)
+  assert.match(releaseNotes, /main/)
+  assert.match(releaseWorkflow, /default: '1\.0\.5'/)
   assert.match(releaseWorkflow, /branches:\s*\n\s*-\s*main/)
   assert.match(releaseWorkflow, /desktop\/package\.json/)
-  assert.match(releaseWorkflow, /RAW_VERSION="1\.0\.4"/)
+  assert.match(releaseWorkflow, /RAW_VERSION="1\.0\.5"/)
 })
 
 test('OpenAPI documents manual local phone endpoint', () => {

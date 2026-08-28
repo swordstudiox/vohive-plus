@@ -5,8 +5,9 @@ function hasATPort(d: DiscoveredDevice): boolean {
   return !!String(d.at_port || '').trim() || (Array.isArray(d.at_ports) && d.at_ports.length > 0)
 }
 
-export function isDjiBaiwangDiscovery(d: DiscoveredDevice): boolean {
-  return Number(d.vendor_id) === 0x2ca3 && Number(d.product_id) === 0x4006
+function isSupportedUSBModemDiscovery(d: DiscoveredDevice): boolean {
+  return (Number(d.vendor_id) === 0x2ca3 && Number(d.product_id) === 0x4006)
+    || Number(d.vendor_id) === 0x2c7c
 }
 
 export function defaultBackendForDiscoveredDevice(d: DiscoveredDevice): DeviceConfigDTO['device_backend'] {
@@ -14,7 +15,7 @@ export function defaultBackendForDiscoveredDevice(d: DiscoveredDevice): DeviceCo
   if (mode === 'mbim') {
     return 'mbim'
   }
-  if (mode === 'qmi' && isDjiBaiwangDiscovery(d) && hasATPort(d)) {
+  if (mode === 'qmi' && isSupportedUSBModemDiscovery(d) && hasATPort(d)) {
     return 'at'
   }
   if (isWwanQmiControlPath(d.control_path) || (mode === 'qmi' && d.control_path)) {

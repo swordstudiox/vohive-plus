@@ -15,7 +15,17 @@ import (
 const (
 	baiwangVendorID  = "2ca3"
 	baiwangProductID = "4006"
+	quectelVendorID  = "2c7c"
 )
+
+type supportedWSLUSBDeviceID struct {
+	VendorID  string
+	ProductID string
+}
+
+var supportedWSLUSBDeviceIDs = []supportedWSLUSBDeviceID{
+	{VendorID: baiwangVendorID, ProductID: baiwangProductID},
+}
 
 type WSLUSBPrepareOptions struct {
 	USBDevicesPath       string
@@ -52,12 +62,12 @@ func PrepareWSLUSB(ctx context.Context, opts WSLUSBPrepareOptions) (WSLUSBPrepar
 	opts = normalizeWSLUSBPrepareOptions(opts)
 	result := WSLUSBPrepareResult{}
 
-	roots, err := findBaiwangUSBDevices(opts.USBDevicesPath)
+	roots, err := findSupportedWSLUSBDevices(opts.USBDevicesPath)
 	if err != nil {
 		return result, err
 	}
 	if len(roots) == 0 {
-		result.Message = "未发现 DJI/Baiwang 4G 模组，请确认 Windows 侧已通过 usbipd attach 到 WSL。"
+		result.Message = "未发现支持的 DJI/Baiwang 或 Quectel 4G/5G 模组，请确认 Windows 侧已通过 usbipd attach 到 WSL。"
 		return result, nil
 	}
 	result.SupportedDeviceFound = true
@@ -73,10 +83,12 @@ func PrepareWSLUSB(ctx context.Context, opts WSLUSBPrepareOptions) (WSLUSBPrepar
 		result.Actions = append(result.Actions, "modprobe:"+module)
 	}
 
-	if action, err := ensureOptionNewID(opts.USBSerialDriversPath, baiwangVendorID, baiwangProductID, opts.SysfsWrite); err != nil {
-		return result, err
-	} else if action != "" {
-		result.Actions = append(result.Actions, action)
+	for _, id := range uniqueSupportedWSLUSBDeviceIDs(roots) {
+		if action, err := ensureOptionNewID(opts.USBSerialDriversPath, id.VendorID, id.ProductID, opts.SysfsWrite); err != nil {
+			return result, err
+		} else if action != "" {
+			result.Actions = append(result.Actions, action)
+		}
 	}
 
 	for _, usbPath := range roots {
@@ -153,7 +165,7 @@ func defaultModprobe(ctx context.Context, module string) error {
 	return nil
 }
 
-func findBaiwangUSBDevices(usbDevicesPath string) ([]string, error) {
+func findSupportedWSLUSBDevices(usbDevicesPath string) ([]string, error) {
 	entries, err := os.ReadDir(usbDevicesPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取 USB 设备失败: %w", err)
@@ -167,12 +179,55 @@ func findBaiwangUSBDevices(usbDevicesPath string) ([]string, error) {
 		usbPath := filepath.Join(usbDevicesPath, entry.Name())
 		vid := strings.ToLower(strings.TrimSpace(readTextFile(filepath.Join(usbPath, "idVendor"))))
 		pid := strings.ToLower(strings.TrimSpace(readTextFile(filepath.Join(usbPath, "idProduct"))))
-		if vid == baiwangVendorID && pid == baiwangProductID {
+		if isSupportedWSLUSBDeviceID(vid, pid) {
 			out = append(out, usbPath)
 		}
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func isSupportedWSLUSBDeviceID(vendorID, productID string) bool {
+	vendorID = strings.ToLower(strings.TrimSpace(vendorID))
+	productID = strings.ToLower(strings.TrimSpace(productID))
+	if vendorID == quectelVendorID && productID != "" {
+		return true
+	}
+	for _, id := range supportedWSLUSBDeviceIDs {
+		if vendorID == id.VendorID && productID == id.ProductID {
+			return true
+		}
+	}
+	return false
+}
+
+func readSupportedWSLUSBDeviceID(usbPath string) (supportedWSLUSBDeviceID, bool) {
+	id := supportedWSLUSBDeviceID{
+		VendorID:  strings.ToLower(strings.TrimSpace(readTextFile(filepath.Join(usbPath, "idVendor")))),
+		ProductID: strings.ToLower(strings.TrimSpace(readTextFile(filepath.Join(usbPath, "idProduct")))),
+	}
+	return id, isSupportedWSLUSBDeviceID(id.VendorID, id.ProductID)
+}
+
+func uniqueSupportedWSLUSBDeviceIDs(roots []string) []supportedWSLUSBDeviceID {
+	seen := make(map[string]bool)
+	out := make([]supportedWSLUSBDeviceID, 0, len(roots))
+	for _, usbPath := range roots {
+		id, ok := readSupportedWSLUSBDeviceID(usbPath)
+		if !ok {
+			continue
+		}
+		key := id.VendorID + ":" + id.ProductID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].VendorID+":"+out[i].ProductID < out[j].VendorID+":"+out[j].ProductID
+	})
+	return out
 }
 
 func ensureOptionNewID(usbSerialDriversPath, vendorID, productID string, write func(string, string) error) (string, error) {
@@ -216,7 +271,11 @@ func bindBaiwangQMIInterface(opts WSLUSBPrepareOptions, usbPath string) ([]strin
 	}
 
 	actions := make([]string, 0, 3)
-	if action, err := ensureQMIWWANNewID(opts.USBDriversPath, baiwangVendorID, baiwangProductID, opts.SysfsWrite); err != nil {
+	id, ok := readSupportedWSLUSBDeviceID(usbPath)
+	if !ok {
+		return actions, fmt.Errorf("USB 设备 %s 不是支持的模组 VID/PID", usbName)
+	}
+	if action, err := ensureQMIWWANNewID(opts.USBDriversPath, id.VendorID, id.ProductID, opts.SysfsWrite); err != nil {
 		return actions, err
 	} else if action != "" {
 		actions = append(actions, action)

@@ -11,7 +11,7 @@ on:
       version:
         description: 'Release version, with or without a leading v'
         required: false
-        default: '1.0.4'
+        default: '1.0.5'
       enable_upx:
         description: 'Enable UPX compression for Linux runtime binaries (true/false)'
         required: false
@@ -49,7 +49,7 @@ jobs:
             RAW_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' desktop/package.json | head -n 1)"
           fi
           if [[ -z "${RAW_VERSION}" ]]; then
-            RAW_VERSION="1.0.4"
+            RAW_VERSION="1.0.5"
           fi
           VERSION="${RAW_VERSION#v}"
           TAG="v${VERSION}"

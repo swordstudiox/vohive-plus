@@ -31,6 +31,30 @@ test('DJI Baiwang QMI discovery with AT port defaults to AT backend', () => {
   })), 'at')
 })
 
+test('original Quectel EC25 QMI discovery with AT port defaults to AT backend', () => {
+  assert.equal(defaultBackendForDiscoveredDevice(discovered({
+    vendor_id: 0x2c7c,
+    product_id: 0x0125,
+    mode: 'qmi',
+    control_path: '/dev/cdc-wdm0',
+    net_interface: 'wwan0',
+    at_port: '/dev/ttyUSB2',
+    at_ports: ['/dev/ttyUSB2', '/dev/ttyUSB3']
+  })), 'at')
+})
+
+test('Quectel family QMI discovery with AT port defaults to AT backend', () => {
+  assert.equal(defaultBackendForDiscoveredDevice(discovered({
+    vendor_id: 0x2c7c,
+    product_id: 0x6002,
+    mode: 'qmi',
+    control_path: '/dev/cdc-wdm0',
+    net_interface: 'wwan0',
+    at_port: '/dev/ttyUSB2',
+    at_ports: ['/dev/ttyUSB2', '/dev/ttyUSB3']
+  })), 'at')
+})
+
 test('generic QMI discovery with control path defaults to QMI backend', () => {
   assert.equal(defaultBackendForDiscoveredDevice(discovered({
     mode: 'qmi',

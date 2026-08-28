@@ -84,7 +84,7 @@ onMounted(async () => {
           <div class="row"><span>{{ targetDevice.vid_pid }}</span><b>{{ targetDevice.state }}</b></div>
           <div class="hint">{{ targetDevice.busid }} · {{ targetDevice.device }}</div>
         </template>
-        <p v-else class="hint">未发现 2ca3:4006 Baiwang</p>
+        <p v-else class="hint">未发现 2ca3:4006 Baiwang 或 2c7c:* Quectel 模组</p>
         <button :disabled="!!busy" @click="runAction('USB', runtimeService.attachUsb)">连接 USB 到 WSL</button>
         <button :disabled="!!busy" @click="runAction('准备 USB', runtimeService.prepareUsb)">准备 WSL USB</button>
       </div>

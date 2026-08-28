@@ -663,7 +663,7 @@ paths:
     post:
       tags: [devices]
       summary: 准备 WSL/Linux USB 驱动绑定
-      description: 针对已验证的 DJI/Baiwang 2ca3:4006 模组，在 WSL/Linux 内加载 option/qmi_wwan/cdc_wdm 并生成 QMI、网卡和 AT 设备节点。Windows 侧 usbipd attach 仍由桌面壳处理。
+      description: 针对已验证的 DJI/Baiwang 2ca3:4006 或 Quectel 2c7c:* 模组，在 WSL/Linux 内加载 option/qmi_wwan/cdc_wdm 并生成 QMI、网卡和 AT 设备节点。Windows 侧 usbipd attach 仍由桌面壳处理。
       responses:
         '200':
           description: USB 准备结果

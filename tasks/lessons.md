@@ -172,3 +172,9 @@
 - 用户要求“推送 `main` 即发布”时，不能只更新版本号并 `git push origin main`；Release workflow 必须显式监听 `push.branches: main`，并且发布 job 条件也要允许 `refs/heads/main`。
 - `main` 推送触发发布时，版本号应从仓库版本元数据读取，例如 `desktop/package.json`，不要只依赖 workflow_dispatch 的输入默认值或手工 tag 名。
 - 发布流程文档必须和 CI 行为一致；如果 README 仍写“创建 tag 并推送”才发布，用户会看到 Actions 成功但 Release 停在旧版本。
+
+## 2026-08-28 USB 模组识别范围
+
+- WSL `prepare-usb` 不能只写死当前截图里的单个 PID；Quectel 模组应按厂商 ID `2c7c:*` 支持，并按实际枚举到的 VID/PID 写入 `option1/new_id` 与 `qmi_wwan/new_id`。
+- `2ca3:4006` 是 DJI/Baiwang 伪装后的精确 ID，需要保留；桌面 `usbipd list` 还可用设备名包含 `Baiwang` 或 `Quectel` 做辅助识别。
+- 不要把 `05c6:*` 这类 Qualcomm 厂商 ID 无条件放进 prepare-usb 支持范围；里面可能包含下载/诊断模式，必须先结合运行拓扑或实机证据再扩展。

@@ -87,7 +87,7 @@ pub fn attach_usb(state: State<'_, AppState>) -> ActionResult {
     };
     let devices = usbipd::list_devices(&path);
     let Some(target) = devices.iter().find(|d| d.is_target) else {
-        return action(false, "未发现 2ca3:4006 Baiwang", None, None);
+        return action(false, "未发现 2ca3:4006 Baiwang 或 2c7c:* Quectel 模组", None, None);
     };
 
     let step = usb_attach_step(target);

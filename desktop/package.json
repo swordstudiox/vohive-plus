@@ -1,7 +1,7 @@
 {
   "name": "vohive-plus-desktop",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "scripts": {
     "sync:backend": "node scripts/sync-backend-resource.mjs",
